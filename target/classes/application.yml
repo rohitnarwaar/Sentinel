@@ -1,0 +1,53 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: sentinel
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/sentinel
+    username: sentinel
+    password: sentinel
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: sentinel-ingestion
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.sentinel.dto"
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+sentinel:
+  kafka:
+    topic: transactions
+  rules:
+    velocity:
+      max-transactions-per-minute: 5
+    amount:
+      high-value-threshold: 5000.00
+      deviation-multiplier: 4.0
+  anomaly:
+    flag-threshold: 0.65
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: always
