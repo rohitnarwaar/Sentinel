@@ -1,0 +1,17 @@
+com\sentinel\service\TransactionConsumerService.class
+com\sentinel\controller\CaseController.class
+com\sentinel\domain\Transaction.class
+com\sentinel\service\RulesEngineService$RuleResult.class
+com\sentinel\repository\FraudCaseRepository.class
+com\sentinel\dto\TransactionEvent$TransactionEventBuilder.class
+com\sentinel\domain\FraudCase.class
+com\sentinel\domain\FraudCase$FraudCaseBuilder.class
+com\sentinel\repository\TransactionRepository.class
+com\sentinel\controller\TransactionController.class
+com\sentinel\domain\Transaction$TransactionBuilder.class
+com\sentinel\service\TransactionProducerService.class
+com\sentinel\dto\TransactionEvent.class
+com\sentinel\config\KafkaConfig.class
+com\sentinel\SentinelApplication.class
+com\sentinel\domain\CaseStatus.class
+com\sentinel\service\RulesEngineService.class

@@ -6,7 +6,7 @@ spring:
     name: sentinel
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/sentinel
+    url: jdbc:postgresql://localhost:5433/sentinel
     username: sentinel
     password: sentinel
 
@@ -34,6 +34,9 @@ spring:
 sentinel:
   kafka:
     topic: transactions
+  simulator:
+    enabled: true
+    interval-ms: 4000
   rules:
     velocity:
       max-transactions-per-minute: 5

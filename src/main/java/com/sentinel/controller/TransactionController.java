@@ -6,6 +6,8 @@ import com.sentinel.repository.TransactionRepository;
 import com.sentinel.service.TransactionProducerService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -34,6 +36,8 @@ public class TransactionController {
 
     @GetMapping
     public List<Transaction> recent() {
-        return transactionRepository.findAll().stream().limit(50).toList();
+        return transactionRepository
+                .findAll(PageRequest.of(0, 50, Sort.by(Sort.Direction.DESC, "timestamp")))
+                .getContent();
     }
 }

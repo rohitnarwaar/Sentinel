@@ -30,6 +30,9 @@ public class TransactionProducerService {
     @Value("${sentinel.kafka.topic}")
     private String topic;
 
+    @Value("${sentinel.simulator.enabled:true}")
+    private boolean simulatorEnabled;
+
     private static final List<String> ACCOUNTS =
             List.of("acct-1001", "acct-1002", "acct-1003", "acct-1004", "acct-1005");
     private static final List<String> MERCHANTS =
@@ -46,6 +49,10 @@ public class TransactionProducerService {
     /** Every few seconds, emit a batch of mostly-normal transactions with occasional outliers. */
     @Scheduled(fixedDelayString = "${sentinel.simulator.interval-ms:4000}")
     public void simulate() {
+        if (!simulatorEnabled) {
+            return;
+        }
+
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
         int batchSize = rnd.nextInt(1, 4);
 
