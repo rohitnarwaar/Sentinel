@@ -34,6 +34,7 @@ spring:
 sentinel:
   kafka:
     topic: transactions
+    cases-opened-topic: fraud-cases-opened
   simulator:
     enabled: true
     interval-ms: 4000
@@ -45,6 +46,20 @@ sentinel:
       deviation-multiplier: 4.0
   anomaly:
     flag-threshold: 0.65
+    min-history-for-stddev: 3
+    zscore-cap: 4.0
+  investigation:
+    similar-cases-k: 5
+    recent-history-limit: 5
+  llm:
+    # Read from the ANTHROPIC_API_KEY environment variable — never hardcode it here.
+    # Empty default so the app still starts without it; the investigation agent
+    # will fail gracefully (retry, then INVESTIGATION_FAILED) if it's unset.
+    anthropic-api-key: ${ANTHROPIC_API_KEY:}
+    model: claude-haiku-4-5-20251001
+    max-tokens: 1024
+    max-attempts: 3
+    initial-backoff-ms: 1000
 
 management:
   endpoints:
