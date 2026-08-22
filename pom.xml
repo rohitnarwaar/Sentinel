@@ -20,6 +20,15 @@
     <properties>
         <java.version>21</java.version>
         <lombok.version>1.18.46</lombok.version>
+        <!-- Spring Boot 3.3.2's managed Mockito (5.11.0) bundles a Byte Buddy that
+             doesn't recognize this JDK's class file version yet; override to the
+             latest so @Mock works on concrete classes (same root cause as the
+             Lombok pin above). -->
+        <mockito.version>5.23.0</mockito.version>
+        <!-- Spring Boot's BOM pins byte-buddy separately from mockito.version and
+             would otherwise override it back down to the JDK-25-incompatible 1.14.18
+             above, even after bumping Mockito itself. -->
+        <byte-buddy.version>1.17.7</byte-buddy.version>
     </properties>
 
     <dependencies>
@@ -106,6 +115,10 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
+                    <!-- Keeps constructor/record-component parameter names in bytecode so
+                         Jackson can deserialize records (e.g. AiInvestigationReport) via
+                         reflection without needing @JsonProperty on every field. -->
+                    <parameters>true</parameters>
                     <annotationProcessorPaths>
                         <path>
                             <groupId>org.projectlombok</groupId>

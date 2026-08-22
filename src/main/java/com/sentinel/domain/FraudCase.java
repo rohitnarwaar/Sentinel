@@ -41,7 +41,11 @@ public class FraudCase {
 
     private Double ruleScore;
 
-    /** Populated later by the AI investigation agent. */
+    /**
+     * Populated later by the AI investigation agent. If the LLM call fails
+     * after retries, this holds the error summary instead, and status flips
+     * to INVESTIGATION_FAILED — the case is never left silently unprocessed.
+     */
     @Column(columnDefinition = "TEXT")
     private String aiReport;
 
