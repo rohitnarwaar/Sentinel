@@ -11,4 +11,6 @@ public interface FraudCaseRepository extends JpaRepository<FraudCase, String> {
     List<FraudCase> findByStatusOrderByCreatedAtDesc(CaseStatus status);
 
     List<FraudCase> findByAccountIdOrderByCreatedAtDesc(String accountId);
+
+    List<FraudCase> findTop100ByOrderByCreatedAtDesc();
 }

@@ -40,6 +40,12 @@ services:
   grafana:
     image: grafana/grafana:latest
     container_name: sentinel-grafana
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning
+      - ./observability/grafana/dashboards:/etc/grafana/dashboards
     ports:
       - "3000:3000"
     depends_on:

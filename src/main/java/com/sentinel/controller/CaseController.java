@@ -22,6 +22,12 @@ public class CaseController {
         return fraudCaseRepository.findByStatusOrderByCreatedAtDesc(CaseStatus.OPEN);
     }
 
+    /** All cases regardless of status, most recent first — what the dashboard polls. */
+    @GetMapping("/all")
+    public List<FraudCase> all() {
+        return fraudCaseRepository.findTop100ByOrderByCreatedAtDesc();
+    }
+
     @GetMapping("/account/{accountId}")
     public List<FraudCase> byAccount(@PathVariable String accountId) {
         return fraudCaseRepository.findByAccountIdOrderByCreatedAtDesc(accountId);

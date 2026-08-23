@@ -7,6 +7,7 @@ import com.sentinel.dto.FraudCaseOpenedEvent;
 import com.sentinel.dto.TransactionEvent;
 import com.sentinel.repository.FraudCaseRepository;
 import com.sentinel.repository.TransactionRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -36,6 +37,7 @@ public class TransactionConsumerService {
     private final RulesEngineService rulesEngineService;
     private final AnomalyScoringService anomalyScoringService;
     private final KafkaTemplate<String, FraudCaseOpenedEvent> caseEventKafkaTemplate;
+    private final MeterRegistry meterRegistry;
 
     @Value("${sentinel.anomaly.flag-threshold}")
     private double flagThreshold;
@@ -67,6 +69,7 @@ public class TransactionConsumerService {
         txn.setFlagged(flagged);
         txn.setAnomalyScore(combinedScore);
         transactionRepository.save(txn);
+        meterRegistry.counter("sentinel.transactions.ingested").increment();
 
         if (flagged) {
             String reason = ruleResult.flagged()
@@ -86,6 +89,7 @@ public class TransactionConsumerService {
                 .createdAt(Instant.now())
                 .build();
         fraudCaseRepository.save(fraudCase);
+        meterRegistry.counter("sentinel.cases.opened").increment();
         log.info("Opened fraud case {} for transaction {} — {}",
                 fraudCase.getCaseId(), txn.getTransactionId(), reason);
 

@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sentinel — Case Review</title>
+<style>
+  :root {
+    --bg: #0d1310;
+    --surface: #141c17;
+    --surface-2: #1b241e;
+    --border: #26312b;
+    --text: #e7ede9;
+    --text-muted: #8fa79a;
+    --text-faint: #5c6f64;
+    --accent: #5fcbb9;
+    --accent-dim: #1c332e;
+
+    --open-fg: #e3a94a;    --open-bg: #392a13;
+    --inv-fg: #6fa8dc;     --inv-bg: #16283a;
+    --rev-fg: #5fcbb9;     --rev-bg: #1c332e;
+    --fail-fg: #e0703f;    --fail-bg: #3a2213;
+    --fraud-fg: #e0685f;   --fraud-bg: #3a1a16;
+    --dismiss-fg: #8fa79a; --dismiss-bg: #1b241e;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .num, .mono { font-family: ui-monospace, "SFMono-Regular", "IBM Plex Mono", Menlo, Consolas, monospace; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  .page { max-width: 1180px; margin: 0 auto; padding: 28px 24px 64px; }
+
+  /* ---------- header ---------- */
+
+  header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 20px;
+    padding-bottom: 22px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 22px;
+  }
+
+  .brand { display: flex; align-items: baseline; gap: 12px; }
+  .brand h1 { font-size: 19px; font-weight: 700; letter-spacing: 0.02em; margin: 0; }
+  .brand .tagline { color: var(--text-muted); font-size: 13px; }
+
+  .live {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12.5px; color: var(--text-muted);
+  }
+  .live-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 0 rgba(95, 203, 185, 0.6);
+    animation: pulse 2s infinite;
+  }
+  .live-dot.stalled { background: var(--fail-fg); animation: none; }
+  @media (prefers-reduced-motion: reduce) { .live-dot { animation: none; } }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(95, 203, 185, 0.5); }
+    70% { box-shadow: 0 0 0 6px rgba(95, 203, 185, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(95, 203, 185, 0); }
+  }
+
+  /* ---------- stats strip ---------- */
+
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 10px;
+    margin-bottom: 22px;
+  }
+
+  .stat {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+
+  .stat .count { font-size: 22px; font-weight: 600; }
+  .stat .stat-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--text-muted); margin-top: 2px;
+  }
+  .stat.accent-open .count { color: var(--open-fg); }
+  .stat.accent-inv .count { color: var(--inv-fg); }
+  .stat.accent-rev .count { color: var(--rev-fg); }
+  .stat.accent-fail .count { color: var(--fail-fg); }
+  .stat.accent-fraud .count { color: var(--fraud-fg); }
+  .stat.accent-dismiss .count { color: var(--dismiss-fg); }
+
+  /* ---------- table ---------- */
+
+  .table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .table-scroll { overflow-x: auto; }
+
+  table { width: 100%; border-collapse: collapse; min-width: 920px; }
+
+  thead th {
+    text-align: left;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    font-weight: 500;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  tbody td {
+    padding: 13px 16px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--surface-2); }
+
+  .case-id { color: var(--text-faint); font-size: 12.5px; }
+  .account { font-weight: 600; }
+
+  .reason {
+    color: var(--text-muted);
+    max-width: 260px;
+    font-size: 13px;
+  }
+
+  .report {
+    color: var(--text-muted);
+    max-width: 280px;
+    font-size: 13px;
+  }
+  .report .empty { color: var(--text-faint); font-style: italic; }
+
+  .score-bar-wrap { display: flex; align-items: center; gap: 8px; }
+  .score-bar {
+    width: 46px; height: 5px; border-radius: 3px;
+    background: var(--surface-2); overflow: hidden; flex-shrink: 0;
+  }
+  .score-bar-fill { height: 100%; background: var(--accent); }
+  .score-num { width: 34px; flex-shrink: 0; }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    font-family: ui-monospace, monospace;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    padding: 3px 9px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .pill.OPEN { color: var(--open-fg); background: var(--open-bg); }
+  .pill.INVESTIGATING { color: var(--inv-fg); background: var(--inv-bg); }
+  .pill.REVIEWED { color: var(--rev-fg); background: var(--rev-bg); }
+  .pill.INVESTIGATION_FAILED { color: var(--fail-fg); background: var(--fail-bg); }
+  .pill.CONFIRMED_FRAUD { color: var(--fraud-fg); background: var(--fraud-bg); }
+  .pill.DISMISSED { color: var(--dismiss-fg); background: var(--dismiss-bg); }
+
+  .timestamp { color: var(--text-faint); font-size: 12.5px; white-space: nowrap; }
+
+  .actions { display: flex; gap: 6px; white-space: nowrap; }
+
+  button {
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  }
+  button:hover { border-color: var(--text-faint); color: var(--text); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button:disabled { opacity: 0.4; cursor: default; }
+
+  button.confirm-fraud:hover { border-color: var(--fraud-fg); color: var(--fraud-fg); }
+  button.dismiss:hover { border-color: var(--dismiss-fg); color: var(--text); }
+
+  .resolved-note { color: var(--text-faint); font-size: 12px; }
+
+  .empty-state {
+    padding: 48px 16px;
+    text-align: center;
+    color: var(--text-muted);
+  }
+
+  .error-banner {
+    display: none;
+    background: var(--fail-bg);
+    color: var(--fail-fg);
+    border: 1px solid var(--fail-fg);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+  .error-banner.visible { display: block; }
+
+  @media (max-width: 760px) {
+    .stats { grid-template-columns: repeat(3, 1fr); }
+  }
+</style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <div class="brand">
+        <h1>SENTINEL</h1>
+        <span class="tagline">case review</span>
+      </div>
+      <div class="live">
+        <span class="live-dot" id="liveDot"></span>
+        <span id="liveLabel">updated just now</span>
+      </div>
+    </header>
+
+    <div class="error-banner" id="errorBanner"></div>
+
+    <div class="stats" id="stats"></div>
+
+    <div class="table-wrap">
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Case</th>
+              <th>Account</th>
+              <th>Flag reason</th>
+              <th>Score</th>
+              <th>AI risk</th>
+              <th>AI assessment</th>
+              <th>Status</th>
+              <th>Opened</th>
+              <th>Decision</th>
+            </tr>
+          </thead>
+          <tbody id="caseRows"></tbody>
+        </table>
+      </div>
+      <div class="empty-state" id="emptyState" style="display:none;">No cases yet — waiting on the pipeline.</div>
+    </div>
+  </div>
+
+<script>
+  const POLL_MS = 5000;
+  const STATUS_ORDER = ["OPEN", "INVESTIGATING", "REVIEWED", "INVESTIGATION_FAILED", "CONFIRMED_FRAUD", "DISMISSED"];
+  const STATUS_LABEL = {
+    OPEN: "Open",
+    INVESTIGATING: "Investigating",
+    REVIEWED: "Reviewed",
+    INVESTIGATION_FAILED: "Investigation failed",
+    CONFIRMED_FRAUD: "Confirmed fraud",
+    DISMISSED: "Dismissed",
+  };
+  const RESOLVED = new Set(["CONFIRMED_FRAUD", "DISMISSED"]);
+
+  const caseRowsEl = document.getElementById("caseRows");
+  const statsEl = document.getElementById("stats");
+  const emptyStateEl = document.getElementById("emptyState");
+  const errorBannerEl = document.getElementById("errorBanner");
+  const liveDotEl = document.getElementById("liveDot");
+  const liveLabelEl = document.getElementById("liveLabel");
+
+  let pendingDecision = null; // caseId currently being submitted, to disable its buttons
+
+  function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str ?? "";
+    return div.innerHTML;
+  }
+
+  function shortId(id) {
+    return id ? id.slice(0, 8) : "—";
+  }
+
+  function formatTime(iso) {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  }
+
+  function scoreCell(value) {
+    if (value === null || value === undefined) {
+      return `<span class="score-num mono" style="color: var(--text-faint);">—</span>`;
+    }
+    const pct = Math.max(0, Math.min(1, value)) * 100;
+    return `
+      <div class="score-bar-wrap">
+        <span class="score-num num">${value.toFixed(2)}</span>
+        <span class="score-bar"><span class="score-bar-fill" style="width:${pct}%"></span></span>
+      </div>`;
+  }
+
+  function extractReasoning(aiReport) {
+    if (!aiReport) return null;
+    const match = aiReport.match(/Reasoning:\s*([\s\S]*?)(?:\n\nRecommended action:|$)/);
+    return match ? match[1].trim() : aiReport;
+  }
+
+  function renderStats(cases) {
+    const counts = {};
+    STATUS_ORDER.forEach((s) => (counts[s] = 0));
+    cases.forEach((c) => { if (counts[c.status] !== undefined) counts[c.status]++; });
+
+    const accentClass = {
+      OPEN: "accent-open", INVESTIGATING: "accent-inv", REVIEWED: "accent-rev",
+      INVESTIGATION_FAILED: "accent-fail", CONFIRMED_FRAUD: "accent-fraud", DISMISSED: "accent-dismiss",
+    };
+
+    statsEl.innerHTML = STATUS_ORDER.map((s) => `
+      <div class="stat ${accentClass[s]}">
+        <div class="count num">${counts[s]}</div>
+        <div class="stat-label">${STATUS_LABEL[s]}</div>
+      </div>`).join("");
+  }
+
+  function renderRows(cases) {
+    if (cases.length === 0) {
+      caseRowsEl.innerHTML = "";
+      emptyStateEl.style.display = "block";
+      return;
+    }
+    emptyStateEl.style.display = "none";
+
+    caseRowsEl.innerHTML = cases.map((c) => {
+      const resolved = RESOLVED.has(c.status);
+      const busy = pendingDecision === c.caseId;
+      const reasoning = extractReasoning(c.aiReport);
+
+      const actionsHtml = resolved
+        ? `<span class="resolved-note">${c.reviewedAt ? formatTime(c.reviewedAt) : "resolved"}</span>`
+        : `
+          <div class="actions">
+            <button class="confirm-fraud" data-case="${c.caseId}" data-status="CONFIRMED_FRAUD" ${busy ? "disabled" : ""}>Confirm fraud</button>
+            <button class="dismiss" data-case="${c.caseId}" data-status="DISMISSED" ${busy ? "disabled" : ""}>Dismiss</button>
+          </div>`;
+
+      return `
+        <tr>
+          <td class="case-id mono">${shortId(c.caseId)}</td>
+          <td class="account">${escapeHtml(c.accountId)}</td>
+          <td class="reason">${escapeHtml(c.flagReason)}</td>
+          <td>${scoreCell(c.ruleScore)}</td>
+          <td>${scoreCell(c.aiRiskScore)}</td>
+          <td class="report">${reasoning ? escapeHtml(reasoning) : `<span class="empty">not yet reviewed</span>`}</td>
+          <td><span class="pill ${c.status}">${STATUS_LABEL[c.status] ?? c.status}</span></td>
+          <td class="timestamp">${formatTime(c.createdAt)}</td>
+          <td>${actionsHtml}</td>
+        </tr>`;
+    }).join("");
+
+    caseRowsEl.querySelectorAll("button[data-case]").forEach((btn) => {
+      btn.addEventListener("click", () => submitDecision(btn.dataset.case, btn.dataset.status));
+    });
+  }
+
+  async function submitDecision(caseId, status) {
+    pendingDecision = caseId;
+    try {
+      const res = await fetch(`/api/cases/${encodeURIComponent(caseId)}/decision?status=${status}`, { method: "POST" });
+      if (!res.ok) throw new Error(`Decision failed: HTTP ${res.status}`);
+    } catch (err) {
+      showError(err.message);
+    } finally {
+      pendingDecision = null;
+      refresh();
+    }
+  }
+
+  function showError(message) {
+    errorBannerEl.textContent = message;
+    errorBannerEl.classList.add("visible");
+  }
+
+  function clearError() {
+    errorBannerEl.classList.remove("visible");
+  }
+
+  async function refresh() {
+    try {
+      const res = await fetch("/api/cases/all");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const cases = await res.json();
+
+      clearError();
+      liveDotEl.classList.remove("stalled");
+      liveLabelEl.textContent = `updated ${new Date().toLocaleTimeString()}`;
+
+      renderStats(cases);
+      renderRows(cases);
+    } catch (err) {
+      liveDotEl.classList.add("stalled");
+      liveLabelEl.textContent = "connection lost";
+      showError(`Couldn't reach the API — is the app running? (${err.message})`);
+    }
+  }
+
+  refresh();
+  setInterval(refresh, POLL_MS);
+</script>
+</body>
+</html>
