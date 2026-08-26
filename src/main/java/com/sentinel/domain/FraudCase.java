@@ -5,6 +5,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.Instant;
 
@@ -53,6 +54,18 @@ public class FraudCase {
 
     @Column(nullable = false)
     private Instant createdAt;
+
+    /**
+     * Auto-maintained by Hibernate on every save — bumped whenever a case
+     * transitions state (OPEN → INVESTIGATING → REVIEWED/etc.), independent
+     * of createdAt. The dashboard's "top 100" is ordered by this, not by
+     * creation time: under a backlog (simulator opening cases faster than
+     * the investigation agent can clear them), ordering by createdAt would
+     * bury exactly the cases that just finished being reviewed under a
+     * flood of newer, still-untouched OPEN cases.
+     */
+    @UpdateTimestamp
+    private Instant updatedAt;
 
     private Instant reviewedAt;
 }
