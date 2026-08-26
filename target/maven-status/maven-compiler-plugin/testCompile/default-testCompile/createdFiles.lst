@@ -1,5 +1,0 @@
-com\sentinel\service\InvestigationAgentServiceTest.class
-com\sentinel\service\AnomalyScoringServiceTest.class
-com\sentinel\service\InvestigationPromptBuilderTest.class
-com\sentinel\service\EmbeddingServiceTest.class
-com\sentinel\service\RulesEngineServiceTest.class
