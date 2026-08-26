@@ -38,7 +38,7 @@ public class InvestigationAgentService {
     private final CaseNoteRepository caseNoteRepository;
     private final EmbeddingService embeddingService;
     private final InvestigationPromptBuilder promptBuilder;
-    private final AnthropicClient anthropicClient;
+    private final LlmClient llmClient;
     private final ObjectMapper objectMapper;
     private final MeterRegistry meterRegistry;
 
@@ -95,7 +95,7 @@ public class InvestigationAgentService {
         List<SimilarCaseNote> similarCases = caseNoteRepository.findTopKSimilar(queryEmbedding, similarCasesK);
 
         String userPrompt = promptBuilder.buildUserPrompt(txn, fraudCase.getFlagReason(), recentHistory, similarCases);
-        String rawResponse = anthropicClient.complete(InvestigationPromptBuilder.SYSTEM_PROMPT, userPrompt);
+        String rawResponse = llmClient.complete(InvestigationPromptBuilder.SYSTEM_PROMPT, userPrompt);
 
         return parseReport(rawResponse);
     }

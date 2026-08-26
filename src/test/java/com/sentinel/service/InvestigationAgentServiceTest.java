@@ -31,9 +31,9 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 /**
- * The LLM call itself (AnthropicClient) is mocked throughout — these tests
- * verify the orchestration around it: JSON parsing, persistence, and the
- * fallback path when the "LLM" fails.
+ * The LLM call itself (LlmClient — whichever provider is active) is mocked
+ * throughout; these tests verify the orchestration around it: JSON parsing,
+ * persistence, and the fallback path when the "LLM" fails.
  */
 @ExtendWith(MockitoExtension.class)
 class InvestigationAgentServiceTest {
@@ -45,7 +45,7 @@ class InvestigationAgentServiceTest {
     @Mock
     private CaseNoteRepository caseNoteRepository;
     @Mock
-    private AnthropicClient anthropicClient;
+    private LlmClient llmClient;
 
     private InvestigationAgentService investigationAgentService;
 
@@ -57,7 +57,7 @@ class InvestigationAgentServiceTest {
                 caseNoteRepository,
                 new EmbeddingService(),
                 new InvestigationPromptBuilder(),
-                anthropicClient,
+                llmClient,
                 new ObjectMapper(),
                 new SimpleMeterRegistry());
         ReflectionTestUtils.setField(investigationAgentService, "similarCasesK", 3);
@@ -93,7 +93,7 @@ class InvestigationAgentServiceTest {
                 .thenReturn(Collections.emptyList());
         when(caseNoteRepository.findTopKSimilar(any(), anyInt())).thenReturn(List.of(
                 new SimilarCaseNote("High value electronics purchase, confirmed legitimate.", "legitimate", 0.2)));
-        when(anthropicClient.complete(anyString(), anyString())).thenReturn(
+        when(llmClient.complete(anyString(), anyString())).thenReturn(
                 "{\"riskScore\": 0.2, \"reasoning\": \"Consistent with prior spend.\", \"recommendedAction\": \"DISMISS\"}");
 
         investigationAgentService.consume(new FraudCaseOpenedEvent("case-1", "txn-1", "acct-1"));
@@ -115,7 +115,7 @@ class InvestigationAgentServiceTest {
         when(transactionRepository.findTop20ByAccountIdOrderByTimestampDesc(anyString()))
                 .thenReturn(Collections.emptyList());
         when(caseNoteRepository.findTopKSimilar(any(), anyInt())).thenReturn(Collections.emptyList());
-        when(anthropicClient.complete(anyString(), anyString())).thenReturn(
+        when(llmClient.complete(anyString(), anyString())).thenReturn(
                 "```json\n{\"riskScore\": 0.9, \"reasoning\": \"Matches card testing pattern.\", \"recommendedAction\": \"ESCALATE\"}\n```");
 
         investigationAgentService.consume(new FraudCaseOpenedEvent("case-1", "txn-1", "acct-1"));
@@ -135,8 +135,8 @@ class InvestigationAgentServiceTest {
         when(transactionRepository.findTop20ByAccountIdOrderByTimestampDesc(anyString()))
                 .thenReturn(Collections.emptyList());
         when(caseNoteRepository.findTopKSimilar(any(), anyInt())).thenReturn(Collections.emptyList());
-        when(anthropicClient.complete(anyString(), anyString()))
-                .thenThrow(new AnthropicClient.AnthropicApiException("Anthropic API call failed after 3 attempts", null));
+        when(llmClient.complete(anyString(), anyString()))
+                .thenThrow(new LlmClientException("LLM call failed after 3 attempts", null));
 
         investigationAgentService.consume(new FraudCaseOpenedEvent("case-1", "txn-1", "acct-1"));
 
@@ -155,6 +155,6 @@ class InvestigationAgentServiceTest {
         investigationAgentService.consume(new FraudCaseOpenedEvent("missing-case", "txn-1", "acct-1"));
 
         verify(fraudCaseRepository, never()).save(any());
-        verifyNoInteractions(anthropicClient);
+        verifyNoInteractions(llmClient);
     }
 }

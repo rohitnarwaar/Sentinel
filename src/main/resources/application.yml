@@ -52,6 +52,9 @@ sentinel:
     similar-cases-k: 5
     recent-history-limit: 5
   llm:
+    # anthropic (default, the project's committed provider) | ollama (free local
+    # testing only — requires Ollama running locally, never the shipped default)
+    provider: anthropic
     # Read from the ANTHROPIC_API_KEY environment variable — never hardcode it here.
     # Empty default so the app still starts without it; the investigation agent
     # will fail gracefully (retry, then INVESTIGATION_FAILED) if it's unset.
@@ -60,6 +63,9 @@ sentinel:
     max-tokens: 1024
     max-attempts: 3
     initial-backoff-ms: 1000
+    ollama:
+      base-url: http://localhost:11434
+      model: llama3.2
 
 management:
   endpoints:
