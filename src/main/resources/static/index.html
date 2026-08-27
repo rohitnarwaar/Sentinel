@@ -5,23 +5,33 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sentinel — Case Review</title>
 <style>
+  /* Dark-only ops console, deliberately — see README for the design-decisions note.
+     Palette is the validated dataviz reference instance, dark column (see
+     references/palette.md): categorical + status + sequential ramp, run through
+     scripts/validate_palette.js before use. */
   :root {
-    --bg: #0d1310;
-    --surface: #141c17;
-    --surface-2: #1b241e;
-    --border: #26312b;
-    --text: #e7ede9;
-    --text-muted: #8fa79a;
-    --text-faint: #5c6f64;
-    --accent: #5fcbb9;
-    --accent-dim: #1c332e;
+    --bg: #0d0d0d;             /* page plane */
+    --surface: #1a1a19;        /* chart / card surface */
+    --surface-2: #232322;
+    --border: #2c2c2a;         /* gridline hairline */
+    --border-strong: #383835;  /* baseline / axis */
+    --ink: #ffffff;
+    --ink-secondary: #c3c2b7;
+    --ink-muted: #898781;
 
-    --open-fg: #e3a94a;    --open-bg: #392a13;
-    --inv-fg: #6fa8dc;     --inv-bg: #16283a;
-    --rev-fg: #5fcbb9;     --rev-bg: #1c332e;
-    --fail-fg: #e0703f;    --fail-bg: #3a2213;
-    --fraud-fg: #e0685f;   --fraud-bg: #3a1a16;
-    --dismiss-fg: #8fa79a; --dismiss-bg: #1b241e;
+    --accent: #3987e5;         /* categorical slot 1, dark — investigating / trend line */
+    --accent-wash: rgba(57, 135, 229, 0.10);
+    --reviewed: #199e70;       /* categorical slot 3, dark */
+
+    --status-good: #0ca30c;
+    --status-warning: #fab219;
+    --status-serious: #ec835a;
+    --status-critical: #d03b3b;
+
+    /* sequential blue ramp, steps 150→600 (dark-surface safe, per palette.md
+       ordinal guidance: no darker than step 600 on a dark chart surface) */
+    --seq-0: #b7d3f6; --seq-1: #9ec5f4; --seq-2: #86b6ef; --seq-3: #6da7ec; --seq-4: #5598e7;
+    --seq-5: #3987e5; --seq-6: #2a78d6; --seq-7: #256abf; --seq-8: #1c5cab; --seq-9: #184f95;
   }
 
   * { box-sizing: border-box; }
@@ -29,16 +39,16 @@
   body {
     margin: 0;
     background: var(--bg);
-    color: var(--text);
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     font-size: 14px;
     line-height: 1.5;
   }
 
-  .num, .mono { font-family: ui-monospace, "SFMono-Regular", "IBM Plex Mono", Menlo, Consolas, monospace; }
+  .num, .mono { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; }
   .num { font-variant-numeric: tabular-nums; }
 
-  .page { max-width: 1180px; margin: 0 auto; padding: 28px 24px 64px; }
+  .page { max-width: 1240px; margin: 0 auto; padding: 28px 24px 64px; }
 
   /* ---------- header ---------- */
 
@@ -54,53 +64,131 @@
 
   .brand { display: flex; align-items: baseline; gap: 12px; }
   .brand h1 { font-size: 19px; font-weight: 700; letter-spacing: 0.02em; margin: 0; }
-  .brand .tagline { color: var(--text-muted); font-size: 13px; }
+  .brand .tagline { color: var(--ink-muted); font-size: 13px; }
 
   .live {
     display: flex; align-items: center; gap: 8px;
-    font-size: 12.5px; color: var(--text-muted);
+    font-size: 12.5px; color: var(--ink-muted);
   }
   .live-dot {
     width: 7px; height: 7px; border-radius: 50%;
-    background: var(--accent);
-    box-shadow: 0 0 0 0 rgba(95, 203, 185, 0.6);
+    background: var(--status-good);
+    box-shadow: 0 0 0 0 rgba(12, 163, 12, 0.6);
     animation: pulse 2s infinite;
   }
-  .live-dot.stalled { background: var(--fail-fg); animation: none; }
-  @media (prefers-reduced-motion: reduce) { .live-dot { animation: none; } }
+  .live-dot.reconnecting { background: var(--status-warning); animation: none; }
+  @media (prefers-reduced-motion: reduce) { .live-dot, .flash { animation: none !important; } }
   @keyframes pulse {
-    0% { box-shadow: 0 0 0 0 rgba(95, 203, 185, 0.5); }
-    70% { box-shadow: 0 0 0 6px rgba(95, 203, 185, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(95, 203, 185, 0); }
+    0% { box-shadow: 0 0 0 0 rgba(12, 163, 12, 0.5); }
+    70% { box-shadow: 0 0 0 6px rgba(12, 163, 12, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(12, 163, 12, 0); }
   }
 
-  /* ---------- stats strip ---------- */
+  /* ---------- stats strip (KPI row) ---------- */
 
   .stats {
     display: grid;
     grid-template-columns: repeat(6, 1fr);
     gap: 10px;
-    margin-bottom: 22px;
+    margin-bottom: 20px;
   }
 
   .stat {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: 10px;
     padding: 12px 14px;
   }
 
   .stat .count { font-size: 22px; font-weight: 600; }
   .stat .stat-label {
     font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
-    color: var(--text-muted); margin-top: 2px;
+    color: var(--ink-muted); margin-top: 2px;
+    display: flex; align-items: center; gap: 6px;
   }
-  .stat.accent-open .count { color: var(--open-fg); }
-  .stat.accent-inv .count { color: var(--inv-fg); }
-  .stat.accent-rev .count { color: var(--rev-fg); }
-  .stat.accent-fail .count { color: var(--fail-fg); }
-  .stat.accent-fraud .count { color: var(--fraud-fg); }
-  .stat.accent-dismiss .count { color: var(--dismiss-fg); }
+  .stat .stat-label::before {
+    content: ""; width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0;
+  }
+  .stat.st-open .count { color: var(--status-warning); }
+  .stat.st-open .stat-label::before { background: var(--status-warning); }
+  .stat.st-investigating .count { color: var(--accent); }
+  .stat.st-investigating .stat-label::before { background: var(--accent); }
+  .stat.st-reviewed .count { color: var(--reviewed); }
+  .stat.st-reviewed .stat-label::before { background: var(--reviewed); }
+  .stat.st-failed .count { color: var(--status-serious); }
+  .stat.st-failed .stat-label::before { background: var(--status-serious); }
+  .stat.st-fraud .count { color: var(--status-critical); }
+  .stat.st-fraud .stat-label::before { background: var(--status-critical); }
+  .stat.st-dismissed .count { color: var(--status-good); }
+  .stat.st-dismissed .stat-label::before { background: var(--status-good); }
+
+  /* ---------- charts ---------- */
+
+  .charts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .chart-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px 12px;
+    position: relative;
+  }
+
+  .chart-card h2 {
+    font-size: 13px;
+    font-weight: 600;
+    margin: 0 0 2px;
+    color: var(--ink);
+  }
+  .chart-card .chart-sub {
+    font-size: 12px;
+    color: var(--ink-muted);
+    margin: 0 0 10px;
+  }
+
+  .chart-card svg { display: block; width: 100%; height: auto; overflow: visible; }
+
+  .axis-label { font-size: 9.5px; fill: var(--ink-muted); font-family: system-ui, sans-serif; }
+  .gridline { stroke: var(--border); stroke-width: 1; }
+  .baseline { stroke: var(--border-strong); stroke-width: 1; }
+
+  .area-fill { fill: var(--accent-wash); }
+  .trend-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .end-dot { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+  .crosshair { stroke: var(--border-strong); stroke-width: 1; pointer-events: none; }
+  .hover-capture { fill: transparent; cursor: crosshair; }
+
+  .hist-bar { transition: opacity 0.1s ease; cursor: pointer; }
+  .hist-bar:hover, .hist-bar:focus-visible { opacity: 0.8; }
+  .hist-bar:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+
+  .chart-empty {
+    height: 160px; display: flex; align-items: center; justify-content: center;
+    color: var(--ink-muted); font-size: 13px;
+  }
+
+  .chart-tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: var(--surface-2);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    padding: 7px 10px;
+    font-size: 12px;
+    white-space: nowrap;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    z-index: 10;
+    opacity: 0;
+    transition: opacity 0.08s ease;
+  }
+  .chart-tooltip.visible { opacity: 1; }
+  .chart-tooltip .tt-value { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .chart-tooltip .tt-label { color: var(--ink-muted); margin-top: 1px; }
 
   /* ---------- table ---------- */
 
@@ -120,7 +208,7 @@
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: var(--text-muted);
+    color: var(--ink-muted);
     font-weight: 500;
     padding: 12px 16px;
     border-bottom: 1px solid var(--border);
@@ -136,84 +224,61 @@
   tbody tr:last-child td { border-bottom: none; }
   tbody tr:hover { background: var(--surface-2); }
 
-  .case-id { color: var(--text-faint); font-size: 12.5px; }
+  tbody tr.flash { animation: rowFlash 1.6s ease-out; }
+  @keyframes rowFlash {
+    0% { background: rgba(57, 135, 229, 0.22); }
+    100% { background: transparent; }
+  }
+
+  .case-id { color: var(--ink-muted); font-size: 12.5px; }
   .account { font-weight: 600; }
 
-  .reason {
-    color: var(--text-muted);
-    max-width: 260px;
-    font-size: 13px;
-  }
-
-  .report {
-    color: var(--text-muted);
-    max-width: 280px;
-    font-size: 13px;
-  }
-  .report .empty { color: var(--text-faint); font-style: italic; }
+  .reason { color: var(--ink-secondary); max-width: 260px; font-size: 13px; }
+  .report { color: var(--ink-secondary); max-width: 280px; font-size: 13px; }
+  .report .empty { color: var(--ink-muted); font-style: italic; }
 
   .score-bar-wrap { display: flex; align-items: center; gap: 8px; }
-  .score-bar {
-    width: 46px; height: 5px; border-radius: 3px;
-    background: var(--surface-2); overflow: hidden; flex-shrink: 0;
-  }
+  .score-bar { width: 46px; height: 5px; border-radius: 3px; background: var(--surface-2); overflow: hidden; flex-shrink: 0; }
   .score-bar-fill { height: 100%; background: var(--accent); }
   .score-num { width: 34px; flex-shrink: 0; }
 
   .pill {
-    display: inline-flex;
-    align-items: center;
-    font-family: ui-monospace, monospace;
-    font-size: 10.5px;
-    font-weight: 600;
-    letter-spacing: 0.03em;
-    padding: 3px 9px;
-    border-radius: 999px;
-    white-space: nowrap;
+    display: inline-flex; align-items: center;
+    font-family: ui-monospace, monospace; font-size: 10.5px; font-weight: 600; letter-spacing: 0.03em;
+    padding: 3px 9px; border-radius: 999px; white-space: nowrap;
   }
-  .pill.OPEN { color: var(--open-fg); background: var(--open-bg); }
-  .pill.INVESTIGATING { color: var(--inv-fg); background: var(--inv-bg); }
-  .pill.REVIEWED { color: var(--rev-fg); background: var(--rev-bg); }
-  .pill.INVESTIGATION_FAILED { color: var(--fail-fg); background: var(--fail-bg); }
-  .pill.CONFIRMED_FRAUD { color: var(--fraud-fg); background: var(--fraud-bg); }
-  .pill.DISMISSED { color: var(--dismiss-fg); background: var(--dismiss-bg); }
+  .pill.OPEN { color: var(--status-warning); background: rgba(250, 178, 25, 0.14); }
+  .pill.INVESTIGATING { color: var(--accent); background: rgba(57, 135, 229, 0.14); }
+  .pill.REVIEWED { color: var(--reviewed); background: rgba(25, 158, 112, 0.14); }
+  .pill.INVESTIGATION_FAILED { color: var(--status-serious); background: rgba(236, 131, 90, 0.14); }
+  .pill.CONFIRMED_FRAUD { color: var(--status-critical); background: rgba(208, 59, 59, 0.14); }
+  .pill.DISMISSED { color: var(--status-good); background: rgba(12, 163, 12, 0.14); }
 
-  .timestamp { color: var(--text-faint); font-size: 12.5px; white-space: nowrap; }
+  .timestamp { color: var(--ink-muted); font-size: 12.5px; white-space: nowrap; }
 
   .actions { display: flex; gap: 6px; white-space: nowrap; }
 
   button {
-    font-family: inherit;
-    font-size: 12px;
-    font-weight: 600;
-    padding: 6px 10px;
-    border-radius: 6px;
-    border: 1px solid var(--border);
-    background: transparent;
-    color: var(--text-muted);
-    cursor: pointer;
+    font-family: inherit; font-size: 12px; font-weight: 600;
+    padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border);
+    background: transparent; color: var(--ink-muted); cursor: pointer;
     transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
   }
-  button:hover { border-color: var(--text-faint); color: var(--text); }
+  button:hover { border-color: var(--ink-muted); color: var(--ink); }
   button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   button:disabled { opacity: 0.4; cursor: default; }
+  button.confirm-fraud:hover { border-color: var(--status-critical); color: var(--status-critical); }
+  button.dismiss:hover { border-color: var(--status-good); color: var(--ink); }
 
-  button.confirm-fraud:hover { border-color: var(--fraud-fg); color: var(--fraud-fg); }
-  button.dismiss:hover { border-color: var(--dismiss-fg); color: var(--text); }
+  .resolved-note { color: var(--ink-muted); font-size: 12px; }
 
-  .resolved-note { color: var(--text-faint); font-size: 12px; }
-
-  .empty-state {
-    padding: 48px 16px;
-    text-align: center;
-    color: var(--text-muted);
-  }
+  .empty-state { padding: 48px 16px; text-align: center; color: var(--ink-muted); }
 
   .error-banner {
     display: none;
-    background: var(--fail-bg);
-    color: var(--fail-fg);
-    border: 1px solid var(--fail-fg);
+    background: rgba(236, 131, 90, 0.12);
+    color: var(--status-serious);
+    border: 1px solid var(--status-serious);
     border-radius: 8px;
     padding: 10px 14px;
     font-size: 13px;
@@ -221,6 +286,9 @@
   }
   .error-banner.visible { display: block; }
 
+  @media (max-width: 900px) {
+    .charts { grid-template-columns: 1fr; }
+  }
   @media (max-width: 760px) {
     .stats { grid-template-columns: repeat(3, 1fr); }
   }
@@ -235,13 +303,26 @@
       </div>
       <div class="live">
         <span class="live-dot" id="liveDot"></span>
-        <span id="liveLabel">updated just now</span>
+        <span id="liveLabel">connecting…</span>
       </div>
     </header>
 
     <div class="error-banner" id="errorBanner"></div>
 
     <div class="stats" id="stats"></div>
+
+    <div class="charts">
+      <div class="chart-card">
+        <h2>Cases opened</h2>
+        <p class="chart-sub">last 60 minutes</p>
+        <div id="volumeChartHost"></div>
+      </div>
+      <div class="chart-card">
+        <h2>AI risk score distribution</h2>
+        <p class="chart-sub">reviewed cases only</p>
+        <div id="riskChartHost"></div>
+      </div>
+    </div>
 
     <div class="table-wrap">
       <div class="table-scroll">
@@ -267,17 +348,23 @@
   </div>
 
 <script>
-  const POLL_MS = 5000;
+  const RESYNC_MS = 30000;
+  const FLASH_MS = 1600;
+  const VOLUME_WINDOW_MIN = 60;
+  const VOLUME_BUCKETS = 12; // 5-minute buckets
+
   const STATUS_ORDER = ["OPEN", "INVESTIGATING", "REVIEWED", "INVESTIGATION_FAILED", "CONFIRMED_FRAUD", "DISMISSED"];
   const STATUS_LABEL = {
-    OPEN: "Open",
-    INVESTIGATING: "Investigating",
-    REVIEWED: "Reviewed",
-    INVESTIGATION_FAILED: "Investigation failed",
-    CONFIRMED_FRAUD: "Confirmed fraud",
-    DISMISSED: "Dismissed",
+    OPEN: "Open", INVESTIGATING: "Investigating", REVIEWED: "Reviewed",
+    INVESTIGATION_FAILED: "Investigation failed", CONFIRMED_FRAUD: "Confirmed fraud", DISMISSED: "Dismissed",
+  };
+  const STATUS_CLASS = {
+    OPEN: "st-open", INVESTIGATING: "st-investigating", REVIEWED: "st-reviewed",
+    INVESTIGATION_FAILED: "st-failed", CONFIRMED_FRAUD: "st-fraud", DISMISSED: "st-dismissed",
   };
   const RESOLVED = new Set(["CONFIRMED_FRAUD", "DISMISSED"]);
+  const SEQ_RAMP = ["--seq-0","--seq-1","--seq-2","--seq-3","--seq-4","--seq-5","--seq-6","--seq-7","--seq-8","--seq-9"]
+    .map(v => getComputedStyle(document.documentElement).getPropertyValue(v).trim());
 
   const caseRowsEl = document.getElementById("caseRows");
   const statsEl = document.getElementById("stats");
@@ -285,8 +372,13 @@
   const errorBannerEl = document.getElementById("errorBanner");
   const liveDotEl = document.getElementById("liveDot");
   const liveLabelEl = document.getElementById("liveLabel");
+  const volumeHost = document.getElementById("volumeChartHost");
+  const riskHost = document.getElementById("riskChartHost");
 
-  let pendingDecision = null; // caseId currently being submitted, to disable its buttons
+  /** id -> case. Single source of truth; trimmed to the newest 100 by createdAt, matching /api/cases/all. */
+  const cases = new Map();
+  const recentlyChanged = new Map(); // id -> timeout handle
+  let pendingDecision = null;
 
   function escapeHtml(str) {
     const div = document.createElement("div");
@@ -294,19 +386,62 @@
     return div.innerHTML;
   }
 
-  function shortId(id) {
-    return id ? id.slice(0, 8) : "—";
-  }
+  function shortId(id) { return id ? id.slice(0, 8) : "—"; }
 
   function formatTime(iso) {
     if (!iso) return "—";
-    const d = new Date(iso);
-    return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    return new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  }
+
+  // Sort/trim by updatedAt, not createdAt — under a backlog (simulator opening
+  // cases faster than the investigation agent clears them), createdAt ordering
+  // would bury a case the instant it finishes review under a flood of newer,
+  // still-untouched OPEN cases. Falls back to createdAt for pre-migration rows
+  // that haven't been saved since updatedAt was added.
+  function activityTime(c) { return new Date(c.updatedAt || c.createdAt).getTime(); }
+
+  function sortedCases() {
+    return Array.from(cases.values()).sort((a, b) => activityTime(b) - activityTime(a));
+  }
+
+  function upsertCase(c, { markChanged = true } = {}) {
+    cases.set(c.caseId, c);
+    if (markChanged) {
+      if (recentlyChanged.has(c.caseId)) clearTimeout(recentlyChanged.get(c.caseId));
+      recentlyChanged.set(c.caseId, setTimeout(() => { recentlyChanged.delete(c.caseId); renderTable(); }, FLASH_MS));
+    }
+    // keep the map bounded to the same top-100-by-updatedAt window the backend serves
+    const sorted = sortedCases();
+    if (sorted.length > 100) {
+      for (const stale of sorted.slice(100)) cases.delete(stale.caseId);
+    }
+  }
+
+  // ---------- stats ----------
+
+  function renderStats() {
+    const counts = {};
+    STATUS_ORDER.forEach((s) => (counts[s] = 0));
+    for (const c of cases.values()) if (counts[c.status] !== undefined) counts[c.status]++;
+
+    statsEl.innerHTML = STATUS_ORDER.map((s) => `
+      <div class="stat ${STATUS_CLASS[s]}">
+        <div class="count num">${counts[s]}</div>
+        <div class="stat-label">${STATUS_LABEL[s]}</div>
+      </div>`).join("");
+  }
+
+  // ---------- table ----------
+
+  function extractReasoning(aiReport) {
+    if (!aiReport) return null;
+    const match = aiReport.match(/Reasoning:\s*([\s\S]*?)(?:\n\nRecommended action:|$)/);
+    return match ? match[1].trim() : aiReport;
   }
 
   function scoreCell(value) {
     if (value === null || value === undefined) {
-      return `<span class="score-num mono" style="color: var(--text-faint);">—</span>`;
+      return `<span class="score-num mono" style="color: var(--ink-muted);">—</span>`;
     }
     const pct = Math.max(0, Math.min(1, value)) * 100;
     return `
@@ -316,41 +451,20 @@
       </div>`;
   }
 
-  function extractReasoning(aiReport) {
-    if (!aiReport) return null;
-    const match = aiReport.match(/Reasoning:\s*([\s\S]*?)(?:\n\nRecommended action:|$)/);
-    return match ? match[1].trim() : aiReport;
-  }
-
-  function renderStats(cases) {
-    const counts = {};
-    STATUS_ORDER.forEach((s) => (counts[s] = 0));
-    cases.forEach((c) => { if (counts[c.status] !== undefined) counts[c.status]++; });
-
-    const accentClass = {
-      OPEN: "accent-open", INVESTIGATING: "accent-inv", REVIEWED: "accent-rev",
-      INVESTIGATION_FAILED: "accent-fail", CONFIRMED_FRAUD: "accent-fraud", DISMISSED: "accent-dismiss",
-    };
-
-    statsEl.innerHTML = STATUS_ORDER.map((s) => `
-      <div class="stat ${accentClass[s]}">
-        <div class="count num">${counts[s]}</div>
-        <div class="stat-label">${STATUS_LABEL[s]}</div>
-      </div>`).join("");
-  }
-
-  function renderRows(cases) {
-    if (cases.length === 0) {
+  function renderTable() {
+    const list = sortedCases();
+    if (list.length === 0) {
       caseRowsEl.innerHTML = "";
       emptyStateEl.style.display = "block";
       return;
     }
     emptyStateEl.style.display = "none";
 
-    caseRowsEl.innerHTML = cases.map((c) => {
+    caseRowsEl.innerHTML = list.map((c) => {
       const resolved = RESOLVED.has(c.status);
       const busy = pendingDecision === c.caseId;
       const reasoning = extractReasoning(c.aiReport);
+      const flashClass = recentlyChanged.has(c.caseId) ? "flash" : "";
 
       const actionsHtml = resolved
         ? `<span class="resolved-note">${c.reviewedAt ? formatTime(c.reviewedAt) : "resolved"}</span>`
@@ -361,7 +475,7 @@
           </div>`;
 
       return `
-        <tr>
+        <tr class="${flashClass}">
           <td class="case-id mono">${shortId(c.caseId)}</td>
           <td class="account">${escapeHtml(c.accountId)}</td>
           <td class="reason">${escapeHtml(c.flagReason)}</td>
@@ -379,6 +493,161 @@
     });
   }
 
+  // ---------- chart: cases opened over time (area + line, single series) ----------
+
+  function renderVolumeChart() {
+    const now = Date.now();
+    const bucketMs = (VOLUME_WINDOW_MIN * 60000) / VOLUME_BUCKETS;
+    const buckets = new Array(VOLUME_BUCKETS).fill(0);
+    const windowStart = now - VOLUME_WINDOW_MIN * 60000;
+
+    for (const c of cases.values()) {
+      const t = new Date(c.createdAt).getTime();
+      if (t < windowStart || t > now) continue;
+      const idx = Math.min(VOLUME_BUCKETS - 1, Math.floor((t - windowStart) / bucketMs));
+      buckets[idx]++;
+    }
+
+    const total = buckets.reduce((a, b) => a + b, 0);
+    if (total === 0) {
+      volumeHost.innerHTML = `<div class="chart-empty">No cases opened in the last ${VOLUME_WINDOW_MIN} minutes.</div>`;
+      return;
+    }
+
+    const W = 560, H = 160, padL = 28, padB = 20, padT = 8, padR = 4;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    const maxVal = Math.max(1, ...buckets);
+    const niceMax = maxVal <= 4 ? maxVal + 1 : Math.ceil(maxVal * 1.15);
+
+    const xAt = (i) => padL + (plotW * (i + 0.5)) / VOLUME_BUCKETS;
+    const yAt = (v) => padT + plotH - (plotH * v) / niceMax;
+
+    const points = buckets.map((v, i) => [xAt(i), yAt(v)]);
+    const linePath = points.map((p, i) => `${i === 0 ? "M" : "L"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
+    const areaPath = `${linePath} L${points[points.length - 1][0].toFixed(1)},${(padT + plotH).toFixed(1)} L${points[0][0].toFixed(1)},${(padT + plotH).toFixed(1)} Z`;
+
+    const gridY = [0, 0.5, 1].map((f) => padT + plotH * f);
+    const gridLabels = [niceMax, Math.round(niceMax / 2), 0];
+
+    volumeHost.innerHTML = `
+      <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Cases opened per 5-minute interval over the last hour">
+        ${gridY.map((y, i) => `<line class="gridline" x1="${padL}" x2="${W - padR}" y1="${y}" y2="${y}"></line>
+          <text class="axis-label" x="${padL - 6}" y="${y + 3}" text-anchor="end">${gridLabels[i]}</text>`).join("")}
+        <line class="baseline" x1="${padL}" x2="${W - padR}" y1="${padT + plotH}" y2="${padT + plotH}"></line>
+        <path class="area-fill" d="${areaPath}"></path>
+        <path class="trend-line" d="${linePath}"></path>
+        <circle class="end-dot" cx="${points[points.length - 1][0]}" cy="${points[points.length - 1][1]}" r="4"></circle>
+        <text class="axis-label" x="${padL}" y="${H - 2}">${formatTime(new Date(windowStart).toISOString())}</text>
+        <text class="axis-label" x="${W - padR}" y="${H - 2}" text-anchor="end">now</text>
+        <line class="crosshair" id="volCrosshair" x1="0" x2="0" y1="${padT}" y2="${padT + plotH}" style="display:none;"></line>
+        <rect class="hover-capture" x="${padL}" y="${padT}" width="${plotW}" height="${plotH}" id="volHoverCapture"></rect>
+      </svg>
+      <div class="chart-tooltip" id="volTooltip"></div>`;
+
+    const svg = volumeHost.querySelector("svg");
+    const capture = volumeHost.querySelector("#volHoverCapture");
+    const crosshair = volumeHost.querySelector("#volCrosshair");
+    const tooltip = volumeHost.querySelector("#volTooltip");
+
+    capture.addEventListener("pointermove", (ev) => {
+      const rect = svg.getBoundingClientRect();
+      const svgX = ((ev.clientX - rect.left) / rect.width) * W;
+      let idx = Math.round(((svgX - padL) / plotW) * VOLUME_BUCKETS - 0.5);
+      idx = Math.max(0, Math.min(VOLUME_BUCKETS - 1, idx));
+      const [px, py] = points[idx];
+
+      crosshair.style.display = "block";
+      crosshair.setAttribute("x1", px); crosshair.setAttribute("x2", px);
+
+      const bucketStart = new Date(windowStart + idx * bucketMs);
+      const bucketEnd = new Date(windowStart + (idx + 1) * bucketMs);
+      tooltip.innerHTML = `<div class="tt-value">${buckets[idx]} case${buckets[idx] === 1 ? "" : "s"}</div>
+        <div class="tt-label">${bucketStart.toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"})}–${bucketEnd.toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"})}</div>`;
+      tooltip.classList.add("visible");
+      const hostRect = volumeHost.getBoundingClientRect();
+      tooltip.style.left = Math.min(hostRect.width - 120, Math.max(0, (px / W) * hostRect.width + 8)) + "px";
+      tooltip.style.top = Math.max(0, (py / H) * hostRect.height - 36) + "px";
+    });
+    capture.addEventListener("pointerleave", () => {
+      crosshair.style.display = "none";
+      tooltip.classList.remove("visible");
+    });
+  }
+
+  // ---------- chart: AI risk score distribution (sequential histogram) ----------
+
+  function renderRiskChart() {
+    const bins = new Array(10).fill(0);
+    let reviewedCount = 0;
+    for (const c of cases.values()) {
+      if (c.status !== "REVIEWED" || c.aiRiskScore === null || c.aiRiskScore === undefined) continue;
+      reviewedCount++;
+      const idx = Math.max(0, Math.min(9, Math.floor(c.aiRiskScore * 10)));
+      bins[idx]++;
+    }
+
+    if (reviewedCount === 0) {
+      riskHost.innerHTML = `<div class="chart-empty">No reviewed cases yet.</div>`;
+      return;
+    }
+
+    const W = 560, H = 160, padL = 24, padB = 20, padT = 8, padR = 4;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    const maxVal = Math.max(1, ...bins);
+    const barSlot = plotW / 10;
+    const barW = Math.min(24, barSlot - 4);
+
+    const barsHtml = bins.map((v, i) => {
+      const h = v === 0 ? 0 : Math.max(2, (plotH * v) / maxVal);
+      const x = padL + i * barSlot + (barSlot - barW) / 2;
+      const y = padT + plotH - h;
+      return `<rect class="hist-bar" tabindex="0" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}"
+                rx="4" ry="4" fill="${SEQ_RAMP[i]}" data-bin="${i}" data-count="${v}"></rect>`;
+    }).join("");
+
+    riskHost.innerHTML = `
+      <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Distribution of AI risk scores across reviewed cases">
+        <line class="baseline" x1="${padL}" x2="${W - padR}" y1="${padT + plotH}" y2="${padT + plotH}"></line>
+        ${barsHtml}
+        <text class="axis-label" x="${padL}" y="${H - 2}">0.0</text>
+        <text class="axis-label" x="${W - padR}" y="${H - 2}" text-anchor="end">1.0</text>
+      </svg>
+      <div class="chart-tooltip" id="riskTooltip"></div>`;
+
+    const tooltip = riskHost.querySelector("#riskTooltip");
+    const svg = riskHost.querySelector("svg");
+
+    riskHost.querySelectorAll(".hist-bar").forEach((bar) => {
+      const show = () => {
+        const i = Number(bar.dataset.bin), count = Number(bar.dataset.count);
+        tooltip.innerHTML = `<div class="tt-value">${count} case${count === 1 ? "" : "s"}</div>
+          <div class="tt-label">risk ${(i / 10).toFixed(1)}–${((i + 1) / 10).toFixed(1)}</div>`;
+        tooltip.classList.add("visible");
+        const svgRect = svg.getBoundingClientRect();
+        const hostRect = riskHost.getBoundingClientRect();
+        const bx = Number(bar.getAttribute("x")) + Number(bar.getAttribute("width")) / 2;
+        tooltip.style.left = Math.min(hostRect.width - 100, Math.max(0, (bx / W) * hostRect.width - 30)) + "px";
+        tooltip.style.top = Math.max(0, (svgRect.height * (Number(bar.getAttribute("y")) / H)) - 34) + "px";
+      };
+      const hide = () => tooltip.classList.remove("visible");
+      bar.addEventListener("pointerenter", show);
+      bar.addEventListener("pointerleave", hide);
+      bar.addEventListener("focus", show);
+      bar.addEventListener("blur", hide);
+    });
+  }
+
+  // ---------- render orchestration ----------
+
+  function renderAll() {
+    renderStats();
+    renderTable();
+    renderVolumeChart();
+    renderRiskChart();
+  }
+
+  // ---------- decisions ----------
+
   async function submitDecision(caseId, status) {
     pendingDecision = caseId;
     try {
@@ -388,40 +657,50 @@
       showError(err.message);
     } finally {
       pendingDecision = null;
-      refresh();
+      renderTable();
     }
   }
 
-  function showError(message) {
-    errorBannerEl.textContent = message;
-    errorBannerEl.classList.add("visible");
+  function showError(message) { errorBannerEl.textContent = message; errorBannerEl.classList.add("visible"); }
+  function clearError() { errorBannerEl.classList.remove("visible"); }
+
+  // ---------- initial snapshot + periodic safety-net resync ----------
+
+  async function fetchSnapshot() {
+    const res = await fetch("/api/cases/all");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const list = await res.json();
+    for (const c of list) upsertCase(c, { markChanged: false });
+    clearError();
+    renderAll();
   }
 
-  function clearError() {
-    errorBannerEl.classList.remove("visible");
+  // ---------- live updates over Server-Sent Events ----------
+
+  function connectStream() {
+    const source = new EventSource("/api/cases/stream");
+
+    source.addEventListener("open", () => {
+      liveDotEl.classList.remove("reconnecting");
+      liveLabelEl.textContent = "live";
+    });
+
+    source.addEventListener("case-update", (ev) => {
+      const c = JSON.parse(ev.data);
+      upsertCase(c);
+      renderAll();
+    });
+
+    source.addEventListener("error", () => {
+      liveDotEl.classList.add("reconnecting");
+      liveLabelEl.textContent = "reconnecting…";
+      // EventSource retries on its own; nothing else to do here.
+    });
   }
 
-  async function refresh() {
-    try {
-      const res = await fetch("/api/cases/all");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const cases = await res.json();
-
-      clearError();
-      liveDotEl.classList.remove("stalled");
-      liveLabelEl.textContent = `updated ${new Date().toLocaleTimeString()}`;
-
-      renderStats(cases);
-      renderRows(cases);
-    } catch (err) {
-      liveDotEl.classList.add("stalled");
-      liveLabelEl.textContent = "connection lost";
-      showError(`Couldn't reach the API — is the app running? (${err.message})`);
-    }
-  }
-
-  refresh();
-  setInterval(refresh, POLL_MS);
+  fetchSnapshot().catch((err) => showError(`Couldn't reach the API — is the app running? (${err.message})`));
+  connectStream();
+  setInterval(() => fetchSnapshot().catch(() => {}), RESYNC_MS);
 </script>
 </body>
 </html>
