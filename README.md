@@ -22,6 +22,18 @@ would look if most of it ran itself.
 - [x] **Phase 4** - live case-review dashboard, Prometheus/Grafana wiring,
       this README
 
+## Screenshots
+
+Live case queue - real-time trend/risk charts, a scrolling transaction feed, and
+cases updating over Server-Sent Events as they're flagged and investigated:
+
+![Sentinel dashboard - case queue](docs/screenshots/dashboard-queue.png)
+
+Case file panel - transaction detail and the AI's investigation report, with
+Confirm Fraud / Dismiss wired to the real decision endpoint:
+
+![Sentinel dashboard - case file panel](docs/screenshots/dashboard-case-panel.png)
+
 ## Running locally
 
 ```bash
@@ -59,6 +71,11 @@ retry/fallback behavior (LLM calls mocked).
 
 ## Architecture
 
+![Sentinel architecture flow](docs/screenshots/architecture-flow.png)
+
+<details>
+<summary>Text version</summary>
+
 ```
 TransactionEvent (Kafka "transactions" topic, keyed by accountId)
         │
@@ -84,7 +101,8 @@ FraudCase opened (status OPEN) ── publishes FraudCaseOpenedEvent
         │                              │
         │                    embed query ──▶ pgvector similarity search (case_notes)
         │                              │
-        │                    build prompt ──▶ AnthropicClient (retry + backoff)
+        │                    build prompt ──▶ LlmClient (Anthropic, or Ollama for
+        │                              │       free local testing - retry + backoff)
         │                              │
         │                    parse {riskScore, reasoning, recommendedAction}
         │                              │
@@ -93,9 +111,12 @@ FraudCase opened (status OPEN) ── publishes FraudCaseOpenedEvent
         │         REVIEWED                    INVESTIGATION_FAILED
         │       (report saved)              (error saved, never silent)
         ▼
-Case Review Dashboard (polls /api/cases/all every 5s) ── analyst approves/dismisses
-                                                          → CONFIRMED_FRAUD / DISMISSED
+Case Review Dashboard (pushed live over Server-Sent Events, 30s periodic resync
+as a safety net - not polling) ── analyst approves/dismisses
+                                    → CONFIRMED_FRAUD / DISMISSED
 ```
+
+</details>
 
 Everything is also emitting Micrometer metrics (`sentinel.transactions.ingested`,
 `sentinel.cases.opened`, `sentinel.ai.agent.latency`) scraped by Prometheus and
@@ -167,11 +188,14 @@ for schema changes that touch existing enum-backed columns.
 
 ### Why the dashboard is a single static HTML file, not React
 
-`src/main/resources/static/index.html` - vanilla JS, `fetch()`, no build
-step. Spring Boot serves it automatically at `/`. Given the scope (a table,
-two buttons, 5-second polling), a React/Vite toolchain would add a build
-step and a second `npm` dependency tree for no real functional gain. This
-was an explicit "optimize for speed of delivery" call, not an oversight.
+`src/main/resources/static/index.html` - vanilla JS, no build step. Spring
+Boot serves it automatically at `/`. Live updates run over Server-Sent
+Events (`GET /api/cases/stream`, pushed by `CaseEventBroadcaster` the
+instant a case's status changes) with a 30-second background resync as a
+safety net - not polling. A React/Vite toolchain would add a build step and
+a second `npm` dependency tree for no real functional gain at this scope.
+This was an explicit "optimize for speed of delivery" call, not an
+oversight.
 
 ### Other tradeoffs worth naming
 

@@ -76,7 +76,7 @@
   }
 
   /* ---------- shell ---------- */
-  .shell { height: 100vh; display: grid; grid-template-rows: auto 34px 1fr; background: var(--bg); overflow: hidden; }
+  .shell { height: 100vh; display: grid; grid-template-rows: auto 34px auto 1fr; background: var(--bg); overflow: hidden; }
   @media (max-width: 760px) { .shell { grid-template-rows: auto 30px 1fr; } }
 
   header {
@@ -131,6 +131,38 @@
   .ticker-item .id { color: var(--muted-2); }
   .ticker-item .ch { color: #3E4B6A; }
   .ticker-item .flag { font-size: 9px; letter-spacing: .1em; }
+
+  /* ---------- charts row ---------- */
+  .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border); border-bottom: 1px solid var(--border); }
+  .chart-card { background: var(--bg); padding: 12px 20px 10px; min-width: 0; }
+  .chart-card .chart-label {
+    font-size: 10px; letter-spacing: .14em; color: var(--muted); margin: 0 0 8px;
+    display: flex; align-items: baseline; gap: 8px;
+  }
+  .chart-card .chart-label .sub { font-size: 9.5px; letter-spacing: .06em; color: #3E4B6A; text-transform: none; }
+  .chart-card svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .chart-empty { height: 84px; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 11px; }
+  .chart-gridline { stroke: var(--border); stroke-width: 1; }
+  .chart-baseline { stroke: var(--border-hover); stroke-width: 1; }
+  .chart-axis-label { font-size: 9px; fill: var(--muted); font-family: 'IBM Plex Mono', monospace; }
+  .chart-area { fill: rgba(245,166,35,.12); }
+  .chart-line { fill: none; stroke: var(--amber); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .chart-dot { fill: var(--amber); stroke: var(--bg); stroke-width: 2; }
+  .chart-crosshair { stroke: var(--border-hover); stroke-width: 1; pointer-events: none; }
+  .chart-hover-capture { fill: transparent; cursor: crosshair; }
+  .hist-bar { transition: opacity .1s ease; cursor: pointer; }
+  .hist-bar:hover, .hist-bar:focus-visible { opacity: .78; }
+  .hist-bar:focus-visible { outline: 1px solid var(--ink); outline-offset: 1px; }
+  .chart-tooltip {
+    position: absolute; pointer-events: none; background: var(--card); border: 1px solid var(--border-hover);
+    border-radius: 3px; padding: 6px 9px; font-size: 11px; white-space: nowrap; z-index: 10; opacity: 0;
+    transition: opacity .08s ease; box-shadow: 0 4px 16px rgba(0,0,0,.5);
+  }
+  .chart-tooltip.visible { opacity: 1; }
+  .chart-tooltip .tt-v { color: var(--ink); font-weight: 600; }
+  .chart-tooltip .tt-l { color: var(--muted); margin-top: 1px; }
+  @media (max-width: 900px) { .charts-row { grid-template-columns: 1fr; } }
+  @media (max-width: 760px) { .charts-row { display: none; } }
 
   /* ---------- main ---------- */
   .main { display: grid; grid-template-columns: minmax(380px,1fr) 0px; overflow: hidden; }
@@ -296,6 +328,17 @@
       <div class="ticker-track mono" id="tickerTrack"></div>
     </div>
 
+    <div class="charts-row">
+      <div class="chart-card">
+        <div class="chart-label mono">CASES OPENED <span class="sub">/ 60 MIN</span></div>
+        <div id="volumeChartHost"></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-label mono">RISK DISTRIBUTION <span class="sub">/ REVIEWED</span></div>
+        <div id="riskChartHost"></div>
+      </div>
+    </div>
+
     <div class="main" id="main">
       <section class="queue">
         <div class="queue-head" id="filters"></div>
@@ -395,6 +438,7 @@
     requestAnimationFrame(() => {
       renderQueued = false;
       renderCounters(); renderFilters(); renderQueue();
+      renderVolumeChart(); renderRiskChart();
       if (selectedId) renderPanel();
     });
   }
@@ -529,6 +573,137 @@
       <button class="filter-btn mono ${filter === k ? 'on' : ''}" data-filter="${k}">${k} ${count(k)}</button>`).join('');
     el('filters').querySelectorAll('[data-filter]').forEach((btn) => {
       btn.addEventListener('click', () => { filter = btn.dataset.filter; renderFilters(); renderQueue(); });
+    });
+  }
+
+  // ---------- rendering: cases-opened trend (single series, amber accent) ----------
+  const VOLUME_WINDOW_MIN = 60;
+  const VOLUME_BUCKETS = 12;
+
+  function renderVolumeChart() {
+    const host = el('volumeChartHost');
+    const now = Date.now();
+    const bucketMs = (VOLUME_WINDOW_MIN * 60000) / VOLUME_BUCKETS;
+    const windowStart = now - VOLUME_WINDOW_MIN * 60000;
+    const buckets = new Array(VOLUME_BUCKETS).fill(0);
+
+    for (const c of cases.values()) {
+      const t = new Date(c.createdAt).getTime();
+      if (t < windowStart || t > now) continue;
+      buckets[Math.min(VOLUME_BUCKETS - 1, Math.floor((t - windowStart) / bucketMs))]++;
+    }
+
+    const total = buckets.reduce((a, b) => a + b, 0);
+    if (total === 0) {
+      host.innerHTML = `<div class="chart-empty">No cases opened in the last ${VOLUME_WINDOW_MIN} minutes.</div>`;
+      return;
+    }
+
+    const W = 480, H = 92, padL = 22, padB = 16, padT = 6, padR = 2;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    const maxVal = Math.max(1, ...buckets);
+    const niceMax = maxVal <= 4 ? maxVal + 1 : Math.ceil(maxVal * 1.15);
+
+    const xAt = (i) => padL + (plotW * (i + 0.5)) / VOLUME_BUCKETS;
+    const yAt = (v) => padT + plotH - (plotH * v) / niceMax;
+    const points = buckets.map((v, i) => [xAt(i), yAt(v)]);
+    const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+    const areaPath = `${linePath} L${points.at(-1)[0].toFixed(1)},${(padT + plotH).toFixed(1)} L${points[0][0].toFixed(1)},${(padT + plotH).toFixed(1)} Z`;
+
+    host.innerHTML = `
+      <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Cases opened per 5-minute interval, last hour">
+        <line class="chart-gridline" x1="${padL}" x2="${W - padR}" y1="${(padT + plotH / 2).toFixed(1)}" y2="${(padT + plotH / 2).toFixed(1)}"></line>
+        <line class="chart-baseline" x1="${padL}" x2="${W - padR}" y1="${padT + plotH}" y2="${padT + plotH}"></line>
+        <path class="chart-area" d="${areaPath}"></path>
+        <path class="chart-line" d="${linePath}"></path>
+        <circle class="chart-dot" cx="${points.at(-1)[0]}" cy="${points.at(-1)[1]}" r="3"></circle>
+        <text class="chart-axis-label" x="${padL}" y="${H - 2}">${new Date(windowStart).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</text>
+        <text class="chart-axis-label" x="${W - padR}" y="${H - 2}" text-anchor="end">now</text>
+        <line class="chart-crosshair" id="volCrosshair" x1="0" x2="0" y1="${padT}" y2="${padT + plotH}" style="display:none;"></line>
+        <rect class="chart-hover-capture" x="${padL}" y="${padT}" width="${plotW}" height="${plotH}" id="volHoverCapture"></rect>
+      </svg>
+      <div class="chart-tooltip" id="volTooltip"></div>`;
+
+    const svg = host.querySelector('svg');
+    const capture = host.querySelector('#volHoverCapture');
+    const crosshair = host.querySelector('#volCrosshair');
+    const tooltip = host.querySelector('#volTooltip');
+
+    capture.addEventListener('pointermove', (ev) => {
+      const rect = svg.getBoundingClientRect();
+      const svgX = ((ev.clientX - rect.left) / rect.width) * W;
+      let idx = Math.round(((svgX - padL) / plotW) * VOLUME_BUCKETS - 0.5);
+      idx = Math.max(0, Math.min(VOLUME_BUCKETS - 1, idx));
+      const [px, py] = points[idx];
+      crosshair.style.display = 'block';
+      crosshair.setAttribute('x1', px); crosshair.setAttribute('x2', px);
+      const bStart = new Date(windowStart + idx * bucketMs), bEnd = new Date(windowStart + (idx + 1) * bucketMs);
+      tooltip.innerHTML = `<div class="tt-v">${buckets[idx]} case${buckets[idx] === 1 ? '' : 's'}</div>
+        <div class="tt-l">${bStart.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}–${bEnd.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</div>`;
+      tooltip.classList.add('visible');
+      const hostRect = host.getBoundingClientRect();
+      tooltip.style.left = Math.min(hostRect.width - 100, Math.max(0, (px / W) * hostRect.width - 30)) + 'px';
+      tooltip.style.top = Math.max(0, (py / H) * hostRect.height - 34) + 'px';
+    });
+    capture.addEventListener('pointerleave', () => { crosshair.style.display = 'none'; tooltip.classList.remove('visible'); });
+  }
+
+  // ---------- rendering: AI risk score distribution (reuses the app's own riskColor bands) ----------
+  function renderRiskChart() {
+    const host = el('riskChartHost');
+    const bins = new Array(10).fill(0);
+    let reviewed = 0;
+    for (const c of cases.values()) {
+      if (c.status !== 'REVIEWED' || c.aiRiskScore == null) continue;
+      reviewed++;
+      bins[Math.max(0, Math.min(9, Math.floor(c.aiRiskScore * 10)))]++;
+    }
+    if (reviewed === 0) {
+      host.innerHTML = `<div class="chart-empty">No reviewed cases yet.</div>`;
+      return;
+    }
+
+    const W = 480, H = 92, padL = 18, padB = 16, padT = 6, padR = 2;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    const maxVal = Math.max(1, ...bins);
+    const slot = plotW / 10;
+    const barW = Math.min(22, slot - 3);
+
+    const bars = bins.map((v, i) => {
+      const h = v === 0 ? 0 : Math.max(2, (plotH * v) / maxVal);
+      const x = padL + i * slot + (slot - barW) / 2;
+      const y = padT + plotH - h;
+      const color = riskColor(((i + 0.5) / 10) * 100);
+      return `<rect class="hist-bar" tabindex="0" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}"
+                rx="2" ry="2" fill="${color}" data-bin="${i}" data-count="${v}"></rect>`;
+    }).join('');
+
+    host.innerHTML = `
+      <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Distribution of AI risk scores across reviewed cases">
+        <line class="chart-baseline" x1="${padL}" x2="${W - padR}" y1="${padT + plotH}" y2="${padT + plotH}"></line>
+        ${bars}
+        <text class="chart-axis-label" x="${padL}" y="${H - 2}">0.0</text>
+        <text class="chart-axis-label" x="${W - padR}" y="${H - 2}" text-anchor="end">1.0</text>
+      </svg>
+      <div class="chart-tooltip" id="riskTooltip"></div>`;
+
+    const svg = host.querySelector('svg');
+    const tooltip = host.querySelector('#riskTooltip');
+    host.querySelectorAll('.hist-bar').forEach((bar) => {
+      const show = () => {
+        const i = Number(bar.dataset.bin), count = Number(bar.dataset.count);
+        tooltip.innerHTML = `<div class="tt-v">${count} case${count === 1 ? '' : 's'}</div><div class="tt-l">risk ${(i / 10).toFixed(1)}–${((i + 1) / 10).toFixed(1)}</div>`;
+        tooltip.classList.add('visible');
+        const svgRect = svg.getBoundingClientRect(), hostRect = host.getBoundingClientRect();
+        const bx = Number(bar.getAttribute('x')) + Number(bar.getAttribute('width')) / 2;
+        tooltip.style.left = Math.min(hostRect.width - 90, Math.max(0, (bx / W) * hostRect.width - 28)) + 'px';
+        tooltip.style.top = Math.max(0, svgRect.height * (Number(bar.getAttribute('y')) / H) - 32) + 'px';
+      };
+      const hide = () => tooltip.classList.remove('visible');
+      bar.addEventListener('pointerenter', show);
+      bar.addEventListener('pointerleave', hide);
+      bar.addEventListener('focus', show);
+      bar.addEventListener('blur', hide);
     });
   }
 
