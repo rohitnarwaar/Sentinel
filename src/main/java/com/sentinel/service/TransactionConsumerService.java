@@ -4,6 +4,7 @@ import com.sentinel.domain.CaseStatus;
 import com.sentinel.domain.FraudCase;
 import com.sentinel.domain.Transaction;
 import com.sentinel.dto.FraudCaseOpenedEvent;
+import com.sentinel.dto.FraudCaseSummary;
 import com.sentinel.dto.TransactionEvent;
 import com.sentinel.repository.FraudCaseRepository;
 import com.sentinel.repository.TransactionRepository;
@@ -91,7 +92,7 @@ public class TransactionConsumerService {
                 .build();
         fraudCaseRepository.save(fraudCase);
         meterRegistry.counter("sentinel.cases.opened").increment();
-        caseEventBroadcaster.broadcast(fraudCase);
+        caseEventBroadcaster.broadcast(FraudCaseSummary.of(fraudCase, txn));
         log.info("Opened fraud case {} for transaction {} — {}",
                 fraudCase.getCaseId(), txn.getTransactionId(), reason);
 

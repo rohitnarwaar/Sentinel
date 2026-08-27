@@ -3,703 +3,810 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sentinel — Case Review</title>
+<title>Sentinel : Fraud Investigation Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  /* Dark-only ops console, deliberately — see README for the design-decisions note.
-     Palette is the validated dataviz reference instance, dark column (see
-     references/palette.md): categorical + status + sequential ramp, run through
-     scripts/validate_palette.js before use. */
   :root {
-    --bg: #0d0d0d;             /* page plane */
-    --surface: #1a1a19;        /* chart / card surface */
-    --surface-2: #232322;
-    --border: #2c2c2a;         /* gridline hairline */
-    --border-strong: #383835;  /* baseline / axis */
-    --ink: #ffffff;
-    --ink-secondary: #c3c2b7;
-    --ink-muted: #898781;
+    --bg: #0B1220;
+    --bg-alt: #0E1526;
+    --card: #131B2E;
+    --border: #263048;
+    --border-hover: #3E4B6A;
+    --ink: #E8EAF0;
+    --ink-dim: #A6B0C8;
+    --muted: #5D6B8A;
+    --muted-2: #9AA6C0;
+    --amber: #F5A623;
+    --red: #F2545B;
+    --teal: #2DD4BF;
 
-    --accent: #3987e5;         /* categorical slot 1, dark — investigating / trend line */
-    --accent-wash: rgba(57, 135, 229, 0.10);
-    --reviewed: #199e70;       /* categorical slot 3, dark */
-
-    --status-good: #0ca30c;
-    --status-warning: #fab219;
-    --status-serious: #ec835a;
-    --status-critical: #d03b3b;
-
-    /* sequential blue ramp, steps 150→600 (dark-surface safe, per palette.md
-       ordinal guidance: no darker than step 600 on a dark chart surface) */
-    --seq-0: #b7d3f6; --seq-1: #9ec5f4; --seq-2: #86b6ef; --seq-3: #6da7ec; --seq-4: #5598e7;
-    --seq-5: #3987e5; --seq-6: #2a78d6; --seq-7: #256abf; --seq-8: #1c5cab; --seq-9: #184f95;
+    --paper: #EDE7DA;
+    --paper-head: #E3DCCB;
+    --paper-border: #CFC7B4;
+    --paper-divider: #DCD5C4;
+    --paper-ink: #1B2233;
+    --paper-muted: #8B8471;
+    --paper-body: #4A4638;
+    --report-bg: #F6F2E8;
+    --ink-red: #A8323A;
+    --ink-amber: #8A5A12;
+    --ink-teal: #0F766E;
+    --ink-slate: #5A6070;
   }
 
   * { box-sizing: border-box; }
-
+  html, body { margin: 0; padding: 0; background: var(--bg); height: 100%; }
   body {
-    margin: 0;
-    background: var(--bg);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
     color: var(--ink);
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    font-size: 14px;
-    line-height: 1.5;
-  }
-
-  .num, .mono { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; }
-  .num { font-variant-numeric: tabular-nums; }
-
-  .page { max-width: 1240px; margin: 0 auto; padding: 28px 24px 64px; }
-
-  /* ---------- header ---------- */
-
-  header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 20px;
-    padding-bottom: 22px;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 22px;
-  }
-
-  .brand { display: flex; align-items: baseline; gap: 12px; }
-  .brand h1 { font-size: 19px; font-weight: 700; letter-spacing: 0.02em; margin: 0; }
-  .brand .tagline { color: var(--ink-muted); font-size: 13px; }
-
-  .live {
-    display: flex; align-items: center; gap: 8px;
-    font-size: 12.5px; color: var(--ink-muted);
-  }
-  .live-dot {
-    width: 7px; height: 7px; border-radius: 50%;
-    background: var(--status-good);
-    box-shadow: 0 0 0 0 rgba(12, 163, 12, 0.6);
-    animation: pulse 2s infinite;
-  }
-  .live-dot.reconnecting { background: var(--status-warning); animation: none; }
-  @media (prefers-reduced-motion: reduce) { .live-dot, .flash { animation: none !important; } }
-  @keyframes pulse {
-    0% { box-shadow: 0 0 0 0 rgba(12, 163, 12, 0.5); }
-    70% { box-shadow: 0 0 0 6px rgba(12, 163, 12, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(12, 163, 12, 0); }
-  }
-
-  /* ---------- stats strip (KPI row) ---------- */
-
-  .stats {
-    display: grid;
-    grid-template-columns: repeat(6, 1fr);
-    gap: 10px;
-    margin-bottom: 20px;
-  }
-
-  .stat {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 12px 14px;
-  }
-
-  .stat .count { font-size: 22px; font-weight: 600; }
-  .stat .stat-label {
-    font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
-    color: var(--ink-muted); margin-top: 2px;
-    display: flex; align-items: center; gap: 6px;
-  }
-  .stat .stat-label::before {
-    content: ""; width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0;
-  }
-  .stat.st-open .count { color: var(--status-warning); }
-  .stat.st-open .stat-label::before { background: var(--status-warning); }
-  .stat.st-investigating .count { color: var(--accent); }
-  .stat.st-investigating .stat-label::before { background: var(--accent); }
-  .stat.st-reviewed .count { color: var(--reviewed); }
-  .stat.st-reviewed .stat-label::before { background: var(--reviewed); }
-  .stat.st-failed .count { color: var(--status-serious); }
-  .stat.st-failed .stat-label::before { background: var(--status-serious); }
-  .stat.st-fraud .count { color: var(--status-critical); }
-  .stat.st-fraud .stat-label::before { background: var(--status-critical); }
-  .stat.st-dismissed .count { color: var(--status-good); }
-  .stat.st-dismissed .stat-label::before { background: var(--status-good); }
-
-  /* ---------- charts ---------- */
-
-  .charts {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    margin-bottom: 20px;
-  }
-
-  .chart-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 16px 18px 12px;
-    position: relative;
-  }
-
-  .chart-card h2 {
-    font-size: 13px;
-    font-weight: 600;
-    margin: 0 0 2px;
-    color: var(--ink);
-  }
-  .chart-card .chart-sub {
-    font-size: 12px;
-    color: var(--ink-muted);
-    margin: 0 0 10px;
-  }
-
-  .chart-card svg { display: block; width: 100%; height: auto; overflow: visible; }
-
-  .axis-label { font-size: 9.5px; fill: var(--ink-muted); font-family: system-ui, sans-serif; }
-  .gridline { stroke: var(--border); stroke-width: 1; }
-  .baseline { stroke: var(--border-strong); stroke-width: 1; }
-
-  .area-fill { fill: var(--accent-wash); }
-  .trend-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-  .end-dot { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
-  .crosshair { stroke: var(--border-strong); stroke-width: 1; pointer-events: none; }
-  .hover-capture { fill: transparent; cursor: crosshair; }
-
-  .hist-bar { transition: opacity 0.1s ease; cursor: pointer; }
-  .hist-bar:hover, .hist-bar:focus-visible { opacity: 0.8; }
-  .hist-bar:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
-
-  .chart-empty {
-    height: 160px; display: flex; align-items: center; justify-content: center;
-    color: var(--ink-muted); font-size: 13px;
-  }
-
-  .chart-tooltip {
-    position: absolute;
-    pointer-events: none;
-    background: var(--surface-2);
-    border: 1px solid var(--border-strong);
-    border-radius: 6px;
-    padding: 7px 10px;
-    font-size: 12px;
-    white-space: nowrap;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-    z-index: 10;
-    opacity: 0;
-    transition: opacity 0.08s ease;
-  }
-  .chart-tooltip.visible { opacity: 1; }
-  .chart-tooltip .tt-value { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
-  .chart-tooltip .tt-label { color: var(--ink-muted); margin-top: 1px; }
-
-  /* ---------- table ---------- */
-
-  .table-wrap {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
+    -webkit-font-smoothing: antialiased;
     overflow: hidden;
   }
+  a { color: var(--amber); text-decoration: none; }
+  a:hover { color: var(--red); }
+  ::selection { background: rgba(242,84,91,.35); }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 0; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
 
-  .table-scroll { overflow-x: auto; }
+  .mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+  .num { font-variant-numeric: tabular-nums; }
+  button { font-family: inherit; cursor: pointer; }
 
-  table { width: 100%; border-collapse: collapse; min-width: 920px; }
-
-  thead th {
-    text-align: left;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--ink-muted);
-    font-weight: 500;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--border);
-    white-space: nowrap;
+  @keyframes sn-ticker { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+  @keyframes sn-sweep { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  @keyframes sn-blink { 0%,49% { opacity:1; } 50%,100% { opacity:0; } }
+  @keyframes sn-live { 0%,100% { opacity:1; } 50% { opacity:.25; } }
+  @keyframes sn-case-in {
+    0% { opacity:0; transform:translateY(-14px); box-shadow:0 0 34px 4px currentColor; }
+    60% { opacity:1; transform:translateY(0); box-shadow:0 0 22px 1px currentColor; }
+    100% { opacity:1; transform:translateY(0); box-shadow:0 0 0 0 rgba(0,0,0,0); }
+  }
+  @keyframes sn-stamp {
+    0% { opacity:0; transform:rotate(-9deg) scale(2.8); }
+    52% { opacity:1; transform:rotate(-9deg) scale(.93); }
+    68% { opacity:1; transform:rotate(-9deg) scale(1.04); }
+    100% { opacity:1; transform:rotate(-9deg) scale(1); }
+  }
+  @keyframes sn-panel-in { from { opacity:0; transform:translateX(24px); } to { opacity:1; transform:translateX(0); } }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; }
   }
 
-  tbody td {
-    padding: 13px 16px;
-    border-bottom: 1px solid var(--border);
-    vertical-align: top;
+  /* ---------- shell ---------- */
+  .shell { height: 100vh; display: grid; grid-template-rows: auto 34px 1fr; background: var(--bg); overflow: hidden; }
+  @media (max-width: 760px) { .shell { grid-template-rows: auto 30px 1fr; } }
+
+  header {
+    display: flex; flex-wrap: nowrap; align-items: center; gap: 24px;
+    min-height: 52px; padding: 0 20px; border-bottom: 1px solid var(--border); background: var(--bg);
+  }
+  @media (max-width: 1060px) { header { gap: 14px; } }
+  @media (max-width: 760px) { header { flex-wrap: wrap; min-height: auto; padding: 10px 14px; gap: 10px; } }
+
+  .brand { display: flex; align-items: baseline; gap: 10px; flex: none; white-space: nowrap; }
+  .brand .wordmark { font-size: 15px; font-weight: 600; letter-spacing: .18em; }
+  .brand .tagline { font-size: 10px; letter-spacing: .14em; color: var(--muted); text-transform: uppercase; }
+  @media (max-width: 1060px) { .brand .tagline { display: none; } }
+
+  .live-pill {
+    display: flex; align-items: center; gap: 7px; padding: 0 10px; height: 22px;
+    border: 1px solid var(--border); border-radius: 2px;
+  }
+  .live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--teal); animation: sn-live 1.6s ease-in-out infinite; }
+  .live-dot.down { background: var(--red); animation: none; }
+  .live-pill .label { font-size: 10px; letter-spacing: .12em; color: var(--muted-2); }
+
+  .header-cluster { margin-left: auto; display: flex; flex-wrap: nowrap; align-items: center; gap: 16px; }
+  @media (max-width: 760px) { .header-cluster { flex-wrap: wrap; } }
+
+  .counter { display: flex; align-items: baseline; gap: 7px; }
+  .counter .v { font-size: 15px; }
+  .counter .l { font-size: 9px; letter-spacing: .13em; color: var(--muted); }
+
+  .btn-simulate {
+    font-size: 10px; letter-spacing: .12em; color: var(--ink);
+    background: var(--card); border: 1px solid var(--border); border-radius: 2px; padding: 7px 12px;
+  }
+  .btn-simulate:hover { border-color: var(--amber); color: var(--amber); }
+  .btn-simulate:disabled { opacity: .5; cursor: default; }
+  .btn-simulate:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+
+  /* ---------- ticker ---------- */
+  .ticker-row { position: relative; overflow: hidden; border-bottom: 1px solid var(--border); background: var(--bg-alt); display: flex; align-items: center; }
+  .ticker-label {
+    position: absolute; left:0; top:0; bottom:0; z-index:2; display:flex; align-items:center;
+    padding: 0 12px; background: var(--bg); border-right: 1px solid var(--border);
+    font-size: 9px; letter-spacing: .14em; color: var(--muted);
+  }
+  .ticker-track { display: flex; width: max-content; animation: sn-ticker 40s linear infinite; padding-left: 96px; }
+  @media (max-width: 760px) { .ticker-track { padding-left: 84px; } }
+  .ticker-item {
+    display: flex; align-items: center; gap: 10px; padding: 0 18px; border-right: 1px solid #1B2438;
+    font-size: 10.5px; white-space: nowrap;
+  }
+  .ticker-item .t { color: var(--muted); }
+  .ticker-item .id { color: var(--muted-2); }
+  .ticker-item .ch { color: #3E4B6A; }
+  .ticker-item .flag { font-size: 9px; letter-spacing: .1em; }
+
+  /* ---------- main ---------- */
+  .main { display: grid; grid-template-columns: minmax(380px,1fr) 0px; overflow: hidden; }
+  .main.has-selection { grid-template-columns: minmax(380px,1fr) clamp(360px, 34vw, 460px); }
+  @media (max-width: 760px) {
+    .main, .main.has-selection { grid-template-columns: 1fr; }
   }
 
-  tbody tr:last-child td { border-bottom: none; }
-  tbody tr:hover { background: var(--surface-2); }
+  .queue { display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid var(--border); }
+  @media (max-width: 760px) { .queue { border-right: none; } }
 
-  tbody tr.flash { animation: rowFlash 1.6s ease-out; }
-  @keyframes rowFlash {
-    0% { background: rgba(57, 135, 229, 0.22); }
-    100% { background: transparent; }
+  .queue-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--bg); }
+  @media (max-width: 760px) { .queue-head { padding: 10px 12px; } }
+  .queue-head .label { font-size: 10px; letter-spacing: .14em; color: var(--muted); margin-right: 6px; flex: none; }
+
+  .filter-btn {
+    font-size: 9.5px; letter-spacing: .1em; padding: 5px 9px; border-radius: 2px; background: transparent; border: 1px solid var(--border); color: var(--muted);
+  }
+  .filter-btn.on { background: rgba(232,234,240,.08); border-color: var(--border-hover); color: var(--ink); }
+  .filter-btn:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+
+  .queue-list { flex: 1; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 10px; }
+  @media (max-width: 760px) { .queue-list { padding: 12px 12px 28px; } }
+
+  .case-card {
+    position: relative; display: grid; grid-template-columns: 46px minmax(150px,1fr) auto; align-items: center; gap: 16px;
+    padding: 14px 18px 14px 16px; background: var(--card); border: 1px solid var(--border); border-radius: 3px; cursor: pointer;
+    border-radius: 3px;
+  }
+  .case-card:hover { border-color: var(--border-hover); }
+  .case-card:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+  @media (max-width: 760px) {
+    .case-card { grid-template-columns: 46px minmax(0,1fr); gap: 12px; padding: 12px 14px 12px 13px; }
+    .case-card .meta { grid-column: 1 / -1; }
+  }
+  .case-card.fresh { animation: sn-case-in 900ms ease-out; }
+  .case-card .rail { position: absolute; left:0; top:0; bottom:0; width:3px; border-radius: 3px 0 0 3px; }
+  .case-card .sel-ring { position: absolute; inset:0; border: 1px solid; border-radius: 3px; pointer-events: none; opacity: 0; }
+  .case-card.selected .sel-ring { opacity: 1; }
+
+  .ring-wrap { position: relative; width: 46px; height: 46px; display: flex; align-items: center; justify-content: center; }
+  .ring-wrap svg { position: absolute; inset: 0; }
+  .ring-wrap .sweep { animation: sn-sweep 1.5s linear infinite; }
+  .ring-score { font-size: 14px; font-weight: 500; }
+
+  .case-id-row { display: flex; align-items: center; gap: 10px; }
+  .case-id-row .id { font-size: 12.5px; }
+  .case-id-row .acct { font-size: 11px; color: var(--muted); }
+  .case-reason { font-size: 12.5px; color: var(--muted-2); text-wrap: pretty; margin-top: 5px; }
+
+  .case-meta { display: flex; align-items: center; justify-content: space-between; gap: 14px; white-space: nowrap; }
+  .case-meta .amt-block { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; flex: 1; }
+  @media (max-width: 760px) { .case-meta .amt-block { align-items: flex-start; } }
+  .case-meta .amount { font-size: 15px; }
+  .case-meta .ts { font-size: 10.5px; color: var(--muted); }
+
+  .status-pill {
+    font-size: 9px; letter-spacing: .09em; padding: 5px 8px; border-radius: 2px; white-space: nowrap; flex: none; border: 1px solid;
   }
 
-  .case-id { color: var(--ink-muted); font-size: 12.5px; }
-  .account { font-weight: 600; }
-
-  .reason { color: var(--ink-secondary); max-width: 260px; font-size: 13px; }
-  .report { color: var(--ink-secondary); max-width: 280px; font-size: 13px; }
-  .report .empty { color: var(--ink-muted); font-style: italic; }
-
-  .score-bar-wrap { display: flex; align-items: center; gap: 8px; }
-  .score-bar { width: 46px; height: 5px; border-radius: 3px; background: var(--surface-2); overflow: hidden; flex-shrink: 0; }
-  .score-bar-fill { height: 100%; background: var(--accent); }
-  .score-num { width: 34px; flex-shrink: 0; }
-
-  .pill {
-    display: inline-flex; align-items: center;
-    font-family: ui-monospace, monospace; font-size: 10.5px; font-weight: 600; letter-spacing: 0.03em;
-    padding: 3px 9px; border-radius: 999px; white-space: nowrap;
-  }
-  .pill.OPEN { color: var(--status-warning); background: rgba(250, 178, 25, 0.14); }
-  .pill.INVESTIGATING { color: var(--accent); background: rgba(57, 135, 229, 0.14); }
-  .pill.REVIEWED { color: var(--reviewed); background: rgba(25, 158, 112, 0.14); }
-  .pill.INVESTIGATION_FAILED { color: var(--status-serious); background: rgba(236, 131, 90, 0.14); }
-  .pill.CONFIRMED_FRAUD { color: var(--status-critical); background: rgba(208, 59, 59, 0.14); }
-  .pill.DISMISSED { color: var(--status-good); background: rgba(12, 163, 12, 0.14); }
-
-  .timestamp { color: var(--ink-muted); font-size: 12.5px; white-space: nowrap; }
-
-  .actions { display: flex; gap: 6px; white-space: nowrap; }
-
-  button {
-    font-family: inherit; font-size: 12px; font-weight: 600;
-    padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border);
-    background: transparent; color: var(--ink-muted); cursor: pointer;
-    transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
-  }
-  button:hover { border-color: var(--ink-muted); color: var(--ink); }
-  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-  button:disabled { opacity: 0.4; cursor: default; }
-  button.confirm-fraud:hover { border-color: var(--status-critical); color: var(--status-critical); }
-  button.dismiss:hover { border-color: var(--status-good); color: var(--ink); }
-
-  .resolved-note { color: var(--ink-muted); font-size: 12px; }
-
-  .empty-state { padding: 48px 16px; text-align: center; color: var(--ink-muted); }
-
+  .empty-queue { padding: 48px 16px; text-align: center; color: var(--muted); }
   .error-banner {
-    display: none;
-    background: rgba(236, 131, 90, 0.12);
-    color: var(--status-serious);
-    border: 1px solid var(--status-serious);
-    border-radius: 8px;
-    padding: 10px 14px;
-    font-size: 13px;
-    margin-bottom: 16px;
+    display: none; margin: 12px 20px 0; background: rgba(242,84,91,.1); color: var(--red);
+    border: 1px solid var(--red); border-radius: 4px; padding: 10px 14px; font-size: 13px;
   }
   .error-banner.visible { display: block; }
 
-  @media (max-width: 900px) {
-    .charts { grid-template-columns: 1fr; }
+  /* ---------- case-file panel (paper) ---------- */
+  aside.panel {
+    display: none; flex-direction: column; overflow: hidden; background: var(--paper); border-left: 1px solid var(--border);
+    box-shadow: -14px 0 28px rgba(0,0,0,.45); animation: sn-panel-in 260ms ease-out; position: relative;
   }
+  .main.has-selection aside.panel { display: flex; }
   @media (max-width: 760px) {
-    .stats { grid-template-columns: repeat(3, 1fr); }
+    aside.panel { position: fixed; inset: 0; z-index: 40; box-shadow: 0 0 0 100vmax rgba(11,18,32,.6); }
+  }
+
+  .panel-head { padding: 16px 20px; border-bottom: 1px solid var(--paper-border); background: var(--paper-head); display: flex; align-items: flex-start; gap: 12px; }
+  .panel-head .k { display: flex; flex-direction: column; gap: 6px; }
+  .panel-head .k .label { font-size: 9.5px; letter-spacing: .16em; color: var(--paper-muted); }
+  .panel-head .k .id { font-size: 16px; color: var(--paper-ink); }
+  .panel-close {
+    margin-left: auto; font-size: 12px; color: var(--paper-muted); background: none; border: 1px solid var(--paper-border);
+    border-radius: 2px; width: 26px; height: 26px;
+  }
+  .panel-close:hover { color: var(--paper-ink); border-color: var(--paper-muted); }
+
+  .panel-body { flex: 1; overflow-y: auto; }
+
+  .panel-summary { padding: 18px 20px; border-bottom: 1px solid var(--paper-border); display: flex; align-items: center; gap: 18px; }
+  .big-ring { position: relative; width: 76px; height: 76px; display: flex; align-items: center; justify-content: center; flex: none; }
+  .big-ring svg { position: absolute; inset: 0; }
+  .big-ring .sweep { animation: sn-sweep 1.5s linear infinite; }
+  .big-ring-inner { display: flex; flex-direction: column; align-items: center; }
+  .big-ring-inner .score { font-size: 23px; }
+  .big-ring-inner .label { font-size: 8px; letter-spacing: .12em; color: var(--paper-muted); }
+
+  .panel-summary-text { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .panel-summary-text .amount { font-size: 22px; color: var(--paper-ink); }
+  .panel-summary-text .reason { font-size: 12.5px; color: var(--paper-body); text-wrap: pretty; }
+
+  .panel-section { padding: 16px 20px; border-bottom: 1px solid var(--paper-border); }
+  .panel-section .label { font-size: 9.5px; letter-spacing: .16em; color: var(--paper-muted); }
+  .detail-grid { margin-top: 12px; display: grid; grid-template-columns: 1fr; }
+  .detail-row { display: grid; grid-template-columns: 104px minmax(0,1fr); gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--paper-divider); }
+  @media (max-width: 760px) { .detail-row { grid-template-columns: 92px minmax(0,1fr); } }
+  .detail-row .k { font-size: 11px; letter-spacing: .06em; color: var(--paper-muted); }
+  .detail-row .v { font-size: 11.5px; color: var(--paper-ink); word-break: break-word; }
+
+  .report-section { padding: 16px 20px 22px; }
+  .report-head { display: flex; align-items: center; gap: 10px; }
+  .report-state { font-size: 9px; letter-spacing: .1em; }
+  .report-box {
+    margin-top: 12px; padding: 14px 16px; background: var(--report-bg); border: 1px solid var(--paper-divider);
+    border-left: 2px solid; border-radius: 3px; min-height: 150px;
+  }
+  .report-box p { margin: 0; font-size: 13px; line-height: 1.72; color: #23262E; text-wrap: pretty; }
+  .cursor { display: inline-block; width: 7px; height: 15px; margin-left: 2px; vertical-align: -2px; animation: sn-blink 900ms step-end infinite; }
+
+  .signals { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .signal-chip {
+    font-size: 9.5px; letter-spacing: .06em; padding: 5px 8px; border: 1px solid var(--paper-border); border-radius: 2px;
+    color: #5A5747; background: #E7E1D2;
+  }
+
+  .panel-actions { padding: 14px 20px; border-top: 1px solid var(--paper-border); background: var(--paper-head); display: flex; flex-direction: column; gap: 8px; }
+  .action-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .action-btn { font-size: 10.5px; letter-spacing: .1em; padding: 12px 0; border-radius: 2px; border: 1px solid; }
+  .action-btn.confirm { color: var(--ink-red); background: rgba(168,50,58,.10); border-color: rgba(168,50,58,.5); }
+  .action-btn.confirm:hover:not(:disabled) { background: rgba(168,50,58,.19); }
+  .action-btn.dismiss { color: var(--ink-teal); background: rgba(15,118,110,.10); border-color: rgba(15,118,110,.45); }
+  .action-btn.dismiss:hover:not(:disabled) { background: rgba(15,118,110,.19); }
+  .action-btn:disabled { opacity: .4; cursor: default; }
+  .analyst-line { font-size: 9.5px; color: var(--paper-muted); }
+
+  .stamp-overlay {
+    position: absolute; inset: 0; display: none; align-items: center; justify-content: center; pointer-events: none;
+  }
+  .stamp-overlay.visible { display: flex; }
+  .stamp-overlay .stamp {
+    animation: sn-stamp 520ms cubic-bezier(.2,1.2,.3,1) forwards; padding: 14px 26px; border: 4px solid; border-radius: 4px;
+    font-size: 22px; letter-spacing: .14em; background: rgba(246,242,232,.74);
   }
 </style>
 </head>
 <body>
-  <div class="page">
+  <div class="shell">
     <header>
       <div class="brand">
-        <h1>SENTINEL</h1>
-        <span class="tagline">case review</span>
+        <span class="wordmark mono">SENTINEL</span>
+        <span class="tagline">Fraud Investigation Console</span>
       </div>
-      <div class="live">
+      <div class="live-pill">
         <span class="live-dot" id="liveDot"></span>
-        <span id="liveLabel">connecting…</span>
+        <span class="label mono" id="liveLabel">CONNECTING</span>
       </div>
+      <div class="header-cluster" id="counters"></div>
+      <button class="btn-simulate mono" id="simulateBtn">SIMULATE INBOUND</button>
     </header>
 
-    <div class="error-banner" id="errorBanner"></div>
-
-    <div class="stats" id="stats"></div>
-
-    <div class="charts">
-      <div class="chart-card">
-        <h2>Cases opened</h2>
-        <p class="chart-sub">last 60 minutes</p>
-        <div id="volumeChartHost"></div>
-      </div>
-      <div class="chart-card">
-        <h2>AI risk score distribution</h2>
-        <p class="chart-sub">reviewed cases only</p>
-        <div id="riskChartHost"></div>
-      </div>
+    <div class="ticker-row">
+      <div class="ticker-label">TXN FEED</div>
+      <div class="ticker-track mono" id="tickerTrack"></div>
     </div>
 
-    <div class="table-wrap">
-      <div class="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>Case</th>
-              <th>Account</th>
-              <th>Flag reason</th>
-              <th>Score</th>
-              <th>AI risk</th>
-              <th>AI assessment</th>
-              <th>Status</th>
-              <th>Opened</th>
-              <th>Decision</th>
-            </tr>
-          </thead>
-          <tbody id="caseRows"></tbody>
-        </table>
-      </div>
-      <div class="empty-state" id="emptyState" style="display:none;">No cases yet — waiting on the pipeline.</div>
+    <div class="main" id="main">
+      <section class="queue">
+        <div class="queue-head" id="filters"></div>
+        <div class="error-banner" id="errorBanner"></div>
+        <div class="queue-list" id="queueList"></div>
+        <div class="empty-queue" id="emptyQueue" style="display:none;">No cases yet - waiting on the pipeline.</div>
+      </section>
+
+      <aside class="panel" id="panel">
+        <div class="panel-head">
+          <div class="k">
+            <span class="label">CASE FILE</span>
+            <span class="id mono" id="panelId"></span>
+          </div>
+          <button class="panel-close" id="panelClose">✕</button>
+        </div>
+        <div class="panel-body" id="panelBody"></div>
+        <div class="panel-actions">
+          <div class="action-row">
+            <button class="action-btn confirm mono" id="btnConfirm">CONFIRM FRAUD</button>
+            <button class="action-btn dismiss mono" id="btnDismiss">DISMISS CASE</button>
+          </div>
+          <span class="analyst-line mono">ANALYST · DECISION LOGGED TO CASE LEDGER</span>
+        </div>
+        <div class="stamp-overlay" id="stampOverlay"><div class="stamp mono" id="stampText"></div></div>
+      </aside>
     </div>
   </div>
 
 <script>
   const RESYNC_MS = 30000;
-  const FLASH_MS = 1600;
-  const VOLUME_WINDOW_MIN = 60;
-  const VOLUME_BUCKETS = 12; // 5-minute buckets
+  const TICKER_POLL_MS = 4000;
+  const REVEAL_MS = 55;
+  const REVEAL_WORDS_PER_TICK = 3;
 
-  const STATUS_ORDER = ["OPEN", "INVESTIGATING", "REVIEWED", "INVESTIGATION_FAILED", "CONFIRMED_FRAUD", "DISMISSED"];
-  const STATUS_LABEL = {
-    OPEN: "Open", INVESTIGATING: "Investigating", REVIEWED: "Reviewed",
-    INVESTIGATION_FAILED: "Investigation failed", CONFIRMED_FRAUD: "Confirmed fraud", DISMISSED: "Dismissed",
+  const RED = '#F2545B', AMBER = '#F5A623', TEAL = '#2DD4BF';
+  const RED_INK = '#A8323A', AMBER_INK = '#8A5A12', TEAL_INK = '#0F766E', SLATE_INK = '#5A6070';
+
+  const STATUS_ORDER = ['ALL', 'OPEN', 'INVESTIGATING', 'REVIEWED', 'INVESTIGATION_FAILED', 'CONFIRMED_FRAUD', 'DISMISSED'];
+  const STATUS_STYLE = {
+    OPEN:                 { fg: AMBER, bg: 'rgba(245,166,35,.10)', border: 'rgba(245,166,35,.45)' },
+    INVESTIGATING:        { fg: AMBER, bg: 'rgba(245,166,35,.16)', border: 'rgba(245,166,35,.7)' },
+    REVIEWED:             { fg: '#9AA6C0', bg: 'rgba(38,48,72,.5)', border: '#263048' },
+    INVESTIGATION_FAILED: { fg: RED, bg: 'rgba(242,84,91,.10)', border: 'rgba(242,84,91,.4)' },
+    CONFIRMED_FRAUD:      { fg: RED, bg: 'rgba(242,84,91,.13)', border: 'rgba(242,84,91,.55)' },
+    DISMISSED:            { fg: TEAL, bg: 'rgba(45,212,191,.11)', border: 'rgba(45,212,191,.45)' },
   };
-  const STATUS_CLASS = {
-    OPEN: "st-open", INVESTIGATING: "st-investigating", REVIEWED: "st-reviewed",
-    INVESTIGATION_FAILED: "st-failed", CONFIRMED_FRAUD: "st-fraud", DISMISSED: "st-dismissed",
+  const PAPER_STATUS = {
+    OPEN:                 { fg: AMBER_INK, bg: 'rgba(138,90,18,.10)', border: 'rgba(138,90,18,.4)' },
+    INVESTIGATING:        { fg: AMBER_INK, bg: 'rgba(138,90,18,.16)', border: 'rgba(138,90,18,.55)' },
+    REVIEWED:             { fg: '#5A6070', bg: 'rgba(90,96,112,.09)', border: '#CFC7B4' },
+    INVESTIGATION_FAILED: { fg: RED_INK, bg: 'rgba(168,50,58,.09)', border: 'rgba(168,50,58,.35)' },
+    CONFIRMED_FRAUD:      { fg: RED_INK, bg: 'rgba(168,50,58,.11)', border: 'rgba(168,50,58,.5)' },
+    DISMISSED:            { fg: TEAL_INK, bg: 'rgba(15,118,110,.10)', border: 'rgba(15,118,110,.42)' },
   };
-  const RESOLVED = new Set(["CONFIRMED_FRAUD", "DISMISSED"]);
-  const SEQ_RAMP = ["--seq-0","--seq-1","--seq-2","--seq-3","--seq-4","--seq-5","--seq-6","--seq-7","--seq-8","--seq-9"]
-    .map(v => getComputedStyle(document.documentElement).getPropertyValue(v).trim());
+  const LIVE_STATUSES = new Set(['OPEN', 'INVESTIGATING']);
+  const RESOLVED_STATUSES = new Set(['CONFIRMED_FRAUD', 'DISMISSED']);
 
-  const caseRowsEl = document.getElementById("caseRows");
-  const statsEl = document.getElementById("stats");
-  const emptyStateEl = document.getElementById("emptyState");
-  const errorBannerEl = document.getElementById("errorBanner");
-  const liveDotEl = document.getElementById("liveDot");
-  const liveLabelEl = document.getElementById("liveLabel");
-  const volumeHost = document.getElementById("volumeChartHost");
-  const riskHost = document.getElementById("riskChartHost");
-
-  /** id -> case. Single source of truth; trimmed to the newest 100 by createdAt, matching /api/cases/all. */
-  const cases = new Map();
-  const recentlyChanged = new Map(); // id -> timeout handle
-  let pendingDecision = null;
+  const money = (n) => n === null || n === undefined ? '-' :
+    '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const riskColor = (s) => s >= 70 ? RED : s >= 45 ? AMBER : TEAL;
+  const riskInk = (s) => s >= 70 ? RED_INK : s >= 45 ? AMBER_INK : SLATE_INK;
+  const CIRCUMF_SMALL = 2 * Math.PI * 19.5;
+  const CIRCUMF_BIG = 2 * Math.PI * 33;
 
   function escapeHtml(str) {
-    const div = document.createElement("div");
-    div.textContent = str ?? "";
+    const div = document.createElement('div');
+    div.textContent = str ?? '';
     return div.innerHTML;
   }
-
-  function shortId(id) { return id ? id.slice(0, 8) : "—"; }
-
+  function shortId(id) { return id ? id.slice(0, 8) : '-'; }
   function formatTime(iso) {
-    if (!iso) return "—";
-    return new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    if (!iso) return '-';
+    return new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
   }
 
-  // Sort/trim by updatedAt, not createdAt — under a backlog (simulator opening
-  // cases faster than the investigation agent clears them), createdAt ordering
-  // would bury a case the instant it finishes review under a flood of newer,
-  // still-untouched OPEN cases. Falls back to createdAt for pre-migration rows
-  // that haven't been saved since updatedAt was added.
+  // ---------- state ----------
+  // Each case object already carries its transaction's amount/merchant/country
+  // (embedded server-side by FraudCaseSummary) — no separate per-case fetch needed.
+  const cases = new Map();           // caseId -> case
+  const reveal = new Map();          // caseId -> { words: string[], shown: number, timer, animated: bool }
+  const freshIds = new Set();        // ids to play the case-in animation for, once
+  let selectedId = null;
+  let filter = 'ALL';
+  let pendingDecision = null;
+  let stampTimer = null;
+  let snapshotLoaded = false;
+
+  const el = (id) => document.getElementById(id);
+
+  // Coalesces bursts of updates (several SSE events arriving within the same
+  // frame) into a single render pass instead of one full rebuild per event.
+  let renderQueued = false;
+  function scheduleRender() {
+    if (renderQueued) return;
+    renderQueued = true;
+    requestAnimationFrame(() => {
+      renderQueued = false;
+      renderCounters(); renderFilters(); renderQueue();
+      if (selectedId) renderPanel();
+    });
+  }
+
   function activityTime(c) { return new Date(c.updatedAt || c.createdAt).getTime(); }
-
-  function sortedCases() {
-    return Array.from(cases.values()).sort((a, b) => activityTime(b) - activityTime(a));
-  }
-
-  function upsertCase(c, { markChanged = true } = {}) {
-    cases.set(c.caseId, c);
-    if (markChanged) {
-      if (recentlyChanged.has(c.caseId)) clearTimeout(recentlyChanged.get(c.caseId));
-      recentlyChanged.set(c.caseId, setTimeout(() => { recentlyChanged.delete(c.caseId); renderTable(); }, FLASH_MS));
-    }
-    // keep the map bounded to the same top-100-by-updatedAt window the backend serves
-    const sorted = sortedCases();
-    if (sorted.length > 100) {
-      for (const stale of sorted.slice(100)) cases.delete(stale.caseId);
-    }
-  }
-
-  // ---------- stats ----------
-
-  function renderStats() {
-    const counts = {};
-    STATUS_ORDER.forEach((s) => (counts[s] = 0));
-    for (const c of cases.values()) if (counts[c.status] !== undefined) counts[c.status]++;
-
-    statsEl.innerHTML = STATUS_ORDER.map((s) => `
-      <div class="stat ${STATUS_CLASS[s]}">
-        <div class="count num">${counts[s]}</div>
-        <div class="stat-label">${STATUS_LABEL[s]}</div>
-      </div>`).join("");
-  }
-
-  // ---------- table ----------
+  function sortedCases() { return Array.from(cases.values()).sort((a, b) => activityTime(b) - activityTime(a)); }
 
   function extractReasoning(aiReport) {
     if (!aiReport) return null;
-    const match = aiReport.match(/Reasoning:\s*([\s\S]*?)(?:\n\nRecommended action:|$)/);
-    return match ? match[1].trim() : aiReport;
+    const m = aiReport.match(/Reasoning:\s*([\s\S]*?)(?:\n\nRecommended action:|$)/);
+    return m ? m[1].trim() : aiReport;
+  }
+  function extractAction(aiReport) {
+    if (!aiReport) return null;
+    const m = aiReport.match(/Recommended action:\s*([A-Z_]+)/);
+    return m ? m[1] : null;
   }
 
-  function scoreCell(value) {
-    if (value === null || value === undefined) {
-      return `<span class="score-num mono" style="color: var(--ink-muted);">—</span>`;
+  function deriveSignals(c) {
+    const tags = [];
+    const reason = (c.flagReason || '').toLowerCase();
+    if (reason.includes('velocity')) tags.push('VELOCITY_SPIKE');
+    if (reason.includes('deviation')) tags.push('AMOUNT_DEVIATION');
+    if (reason.includes('high value')) tags.push('HIGH_VALUE');
+    if (reason.includes('anomaly score')) tags.push('STATISTICAL_ANOMALY');
+    const action = extractAction(c.aiReport);
+    if (action) tags.push('AI_ACTION: ' + action);
+    return tags;
+  }
+
+  function effectiveScore(c) {
+    const v = c.aiRiskScore !== null && c.aiRiskScore !== undefined ? c.aiRiskScore : c.ruleScore;
+    return v === null || v === undefined ? 0 : Math.round(v * 100);
+  }
+
+  // ---------- reveal (streaming-text) engine ----------
+  function ensureReveal(c) {
+    const hasAnimatableReport = c.status === 'REVIEWED' && c.aiReport;
+    const text = hasAnimatableReport ? extractReasoning(c.aiReport) : c.aiReport;
+    const words = (text || '').split(' ').filter(Boolean);
+
+    let entry = reveal.get(c.caseId);
+    if (!entry) {
+      // Cases already complete at initial page load show instantly — only cases that
+      // finish being reviewed *while the page is open* get the animated reveal.
+      const animate = hasAnimatableReport && snapshotLoaded;
+      entry = { words, shown: animate ? 0 : words.length, timer: null, animated: animate };
+      reveal.set(c.caseId, entry);
+      if (animate) startReveal(c.caseId);
+    } else if (entry.words.length !== words.length || entry.words.join(' ') !== words.join(' ')) {
+      // report text changed (e.g. just arrived) and we hadn't started animating yet
+      const animate = hasAnimatableReport && entry.shown === 0 && !entry.timer;
+      entry.words = words;
+      if (!entry.animated && animate && snapshotLoaded) {
+        entry.animated = true;
+        startReveal(c.caseId);
+      } else if (!entry.timer) {
+        entry.shown = words.length;
+      }
     }
-    const pct = Math.max(0, Math.min(1, value)) * 100;
+    return entry;
+  }
+
+  function startReveal(caseId) {
+    if (reveal.get(caseId)?.timer) return;
+    const tick = () => {
+      const entry = reveal.get(caseId);
+      if (!entry) return;
+      if (entry.shown >= entry.words.length) {
+        clearInterval(entry.timer);
+        entry.timer = null;
+        renderQueue(); if (selectedId === caseId) renderPanel();
+        return;
+      }
+      entry.shown = Math.min(entry.words.length, entry.shown + REVEAL_WORDS_PER_TICK);
+      if (selectedId === caseId) renderPanel();
+    };
+    const entry = reveal.get(caseId);
+    entry.timer = setInterval(tick, REVEAL_MS);
+  }
+
+  function isLocked(c) {
+    const entry = reveal.get(c.caseId);
+    if (!entry) return !LIVE_STATUSES.has(c.status);
+    if (LIVE_STATUSES.has(c.status)) return false;
+    return entry.shown >= entry.words.length;
+  }
+
+  // ---------- data ingestion ----------
+  function upsertCase(c, opts = {}) {
+    const prior = cases.get(c.caseId);
+    cases.set(c.caseId, c);
+    ensureReveal(c);
+    if (!opts.fromSnapshot && (!prior || prior.status !== c.status)) {
+      if (c.status === 'OPEN' && !prior) freshIds.add(c.caseId);
+    }
+    const sorted = sortedCases();
+    if (sorted.length > 120) {
+      for (const stale of sorted.slice(120)) {
+        cases.delete(stale.caseId);
+        const r = reveal.get(stale.caseId);
+        if (r?.timer) clearInterval(r.timer);
+        reveal.delete(stale.caseId);
+      }
+    }
+  }
+
+  // ---------- rendering: header counters ----------
+  function renderCounters() {
+    const all = Array.from(cases.values());
+    const count = (k) => k === 'ALL' ? all.length : all.filter((c) => c.status === k).length;
+    const narrow = window.innerWidth < 1060;
+    const items = [
+      { l: 'OPEN', v: count('OPEN'), c: AMBER },
+      { l: narrow ? 'ACTIVE' : 'INVESTIGATING', v: count('INVESTIGATING'), c: AMBER },
+      { l: narrow ? 'FRAUD' : 'CONFIRMED', v: count('CONFIRMED_FRAUD'), c: RED },
+      { l: 'CLEARED', v: count('DISMISSED'), c: TEAL },
+    ].filter((k) => window.innerWidth >= 760 || k.l !== 'CLEARED');
+
+    el('counters').innerHTML = items.map((k) => `
+      <div class="counter">
+        <span class="v mono num" style="color:${k.c}">${k.v}</span>
+        <span class="l">${k.l}</span>
+      </div>`).join('');
+  }
+
+  // ---------- rendering: filters ----------
+  function renderFilters() {
+    const all = Array.from(cases.values());
+    const count = (k) => k === 'ALL' ? all.length : all.filter((c) => c.status === k).length;
+    el('filters').innerHTML = `<span class="label">QUEUE</span>` + STATUS_ORDER.map((k) => `
+      <button class="filter-btn mono ${filter === k ? 'on' : ''}" data-filter="${k}">${k} ${count(k)}</button>`).join('');
+    el('filters').querySelectorAll('[data-filter]').forEach((btn) => {
+      btn.addEventListener('click', () => { filter = btn.dataset.filter; renderFilters(); renderQueue(); });
+    });
+  }
+
+  // ---------- rendering: queue ----------
+  function ringSvg(score, locked, color, size, r, small) {
+    const c = small ? CIRCUMF_SMALL : CIRCUMF_BIG;
+    const dash = (c * score / 100).toFixed(1) + ' ' + c.toFixed(1);
+    const sw = small ? 2 : 2.5;
     return `
-      <div class="score-bar-wrap">
-        <span class="score-num num">${value.toFixed(2)}</span>
-        <span class="score-bar"><span class="score-bar-fill" style="width:${pct}%"></span></span>
-      </div>`;
+      <svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">
+        <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="#263048" stroke-width="${sw}"></circle>
+        <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${color}" stroke-width="${sw}"
+          stroke-dasharray="${dash}" transform="rotate(-90 ${size/2} ${size/2})" opacity="${locked ? 1 : 0.18}"></circle>
+      </svg>
+      <svg class="sweep" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" style="opacity:${locked ? 0 : 1}">
+        <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${color}" stroke-width="${sw}"
+          stroke-dasharray="${(small ? 26 : 44)} ${(small ? 96 : 164)}" transform="rotate(-90 ${size/2} ${size/2})"></circle>
+      </svg>`;
   }
 
-  function renderTable() {
-    const list = sortedCases();
-    if (list.length === 0) {
-      caseRowsEl.innerHTML = "";
-      emptyStateEl.style.display = "block";
-      return;
-    }
-    emptyStateEl.style.display = "none";
+  function renderQueue() {
+    const all = sortedCases();
+    const list = filter === 'ALL' ? all : all.filter((c) => c.status === filter);
+    el('emptyQueue').style.display = list.length === 0 ? 'block' : 'none';
 
-    caseRowsEl.innerHTML = list.map((c) => {
-      const resolved = RESOLVED.has(c.status);
-      const busy = pendingDecision === c.caseId;
-      const reasoning = extractReasoning(c.aiReport);
-      const flashClass = recentlyChanged.has(c.caseId) ? "flash" : "";
-
-      const actionsHtml = resolved
-        ? `<span class="resolved-note">${c.reviewedAt ? formatTime(c.reviewedAt) : "resolved"}</span>`
-        : `
-          <div class="actions">
-            <button class="confirm-fraud" data-case="${c.caseId}" data-status="CONFIRMED_FRAUD" ${busy ? "disabled" : ""}>Confirm fraud</button>
-            <button class="dismiss" data-case="${c.caseId}" data-status="DISMISSED" ${busy ? "disabled" : ""}>Dismiss</button>
-          </div>`;
+    el('queueList').innerHTML = list.map((c) => {
+      const score = effectiveScore(c);
+      const locked = isLocked(c);
+      const live = LIVE_STATUSES.has(c.status);
+      const verdict = c.status === 'CONFIRMED_FRAUD';
+      const chrome = live ? riskColor(score) : verdict ? RED : '#5D6B8A';
+      const ss = STATUS_STYLE[c.status] || STATUS_STYLE.OPEN;
+      const textColor = live || verdict ? 'var(--ink)' : 'var(--ink-dim)';
+      const isFresh = freshIds.has(c.caseId);
+      freshIds.delete(c.caseId);
 
       return `
-        <tr class="${flashClass}">
-          <td class="case-id mono">${shortId(c.caseId)}</td>
-          <td class="account">${escapeHtml(c.accountId)}</td>
-          <td class="reason">${escapeHtml(c.flagReason)}</td>
-          <td>${scoreCell(c.ruleScore)}</td>
-          <td>${scoreCell(c.aiRiskScore)}</td>
-          <td class="report">${reasoning ? escapeHtml(reasoning) : `<span class="empty">not yet reviewed</span>`}</td>
-          <td><span class="pill ${c.status}">${STATUS_LABEL[c.status] ?? c.status}</span></td>
-          <td class="timestamp">${formatTime(c.createdAt)}</td>
-          <td>${actionsHtml}</td>
-        </tr>`;
-    }).join("");
+        <div class="case-card ${isFresh ? 'fresh' : ''} ${selectedId === c.caseId ? 'selected' : ''}" style="color:${chrome}" data-case="${c.caseId}" tabindex="0">
+          <div class="rail" style="background:${chrome}"></div>
+          <div class="sel-ring" style="border-color:${chrome}"></div>
+          <div class="ring-wrap">
+            ${ringSvg(score, locked, chrome, 46, 19.5, true)}
+            <span class="ring-score mono num" style="color:${chrome}">${score}</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:5px;min-width:0;">
+            <div class="case-id-row">
+              <span class="id mono" style="color:${textColor}">${shortId(c.caseId)}</span>
+              <span class="acct mono">${escapeHtml(c.accountId)}</span>
+            </div>
+            <span class="case-reason">${escapeHtml(c.flagReason)}</span>
+          </div>
+          <div class="case-meta">
+            <div class="amt-block">
+              <span class="amount mono num" style="color:${textColor}">${money(c.amount)}</span>
+              <span class="ts mono">${formatTime(c.createdAt)}</span>
+            </div>
+            <span class="status-pill mono" style="color:${ss.fg};background:${ss.bg};border-color:${ss.border}">${c.status}</span>
+          </div>
+        </div>`;
+    }).join('');
 
-    caseRowsEl.querySelectorAll("button[data-case]").forEach((btn) => {
-      btn.addEventListener("click", () => submitDecision(btn.dataset.case, btn.dataset.status));
+    el('queueList').querySelectorAll('[data-case]').forEach((node) => {
+      node.addEventListener('click', () => selectCase(node.dataset.case));
+      node.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectCase(node.dataset.case); } });
     });
   }
 
-  // ---------- chart: cases opened over time (area + line, single series) ----------
-
-  function renderVolumeChart() {
-    const now = Date.now();
-    const bucketMs = (VOLUME_WINDOW_MIN * 60000) / VOLUME_BUCKETS;
-    const buckets = new Array(VOLUME_BUCKETS).fill(0);
-    const windowStart = now - VOLUME_WINDOW_MIN * 60000;
-
-    for (const c of cases.values()) {
-      const t = new Date(c.createdAt).getTime();
-      if (t < windowStart || t > now) continue;
-      const idx = Math.min(VOLUME_BUCKETS - 1, Math.floor((t - windowStart) / bucketMs));
-      buckets[idx]++;
-    }
-
-    const total = buckets.reduce((a, b) => a + b, 0);
-    if (total === 0) {
-      volumeHost.innerHTML = `<div class="chart-empty">No cases opened in the last ${VOLUME_WINDOW_MIN} minutes.</div>`;
-      return;
-    }
-
-    const W = 560, H = 160, padL = 28, padB = 20, padT = 8, padR = 4;
-    const plotW = W - padL - padR, plotH = H - padT - padB;
-    const maxVal = Math.max(1, ...buckets);
-    const niceMax = maxVal <= 4 ? maxVal + 1 : Math.ceil(maxVal * 1.15);
-
-    const xAt = (i) => padL + (plotW * (i + 0.5)) / VOLUME_BUCKETS;
-    const yAt = (v) => padT + plotH - (plotH * v) / niceMax;
-
-    const points = buckets.map((v, i) => [xAt(i), yAt(v)]);
-    const linePath = points.map((p, i) => `${i === 0 ? "M" : "L"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
-    const areaPath = `${linePath} L${points[points.length - 1][0].toFixed(1)},${(padT + plotH).toFixed(1)} L${points[0][0].toFixed(1)},${(padT + plotH).toFixed(1)} Z`;
-
-    const gridY = [0, 0.5, 1].map((f) => padT + plotH * f);
-    const gridLabels = [niceMax, Math.round(niceMax / 2), 0];
-
-    volumeHost.innerHTML = `
-      <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Cases opened per 5-minute interval over the last hour">
-        ${gridY.map((y, i) => `<line class="gridline" x1="${padL}" x2="${W - padR}" y1="${y}" y2="${y}"></line>
-          <text class="axis-label" x="${padL - 6}" y="${y + 3}" text-anchor="end">${gridLabels[i]}</text>`).join("")}
-        <line class="baseline" x1="${padL}" x2="${W - padR}" y1="${padT + plotH}" y2="${padT + plotH}"></line>
-        <path class="area-fill" d="${areaPath}"></path>
-        <path class="trend-line" d="${linePath}"></path>
-        <circle class="end-dot" cx="${points[points.length - 1][0]}" cy="${points[points.length - 1][1]}" r="4"></circle>
-        <text class="axis-label" x="${padL}" y="${H - 2}">${formatTime(new Date(windowStart).toISOString())}</text>
-        <text class="axis-label" x="${W - padR}" y="${H - 2}" text-anchor="end">now</text>
-        <line class="crosshair" id="volCrosshair" x1="0" x2="0" y1="${padT}" y2="${padT + plotH}" style="display:none;"></line>
-        <rect class="hover-capture" x="${padL}" y="${padT}" width="${plotW}" height="${plotH}" id="volHoverCapture"></rect>
-      </svg>
-      <div class="chart-tooltip" id="volTooltip"></div>`;
-
-    const svg = volumeHost.querySelector("svg");
-    const capture = volumeHost.querySelector("#volHoverCapture");
-    const crosshair = volumeHost.querySelector("#volCrosshair");
-    const tooltip = volumeHost.querySelector("#volTooltip");
-
-    capture.addEventListener("pointermove", (ev) => {
-      const rect = svg.getBoundingClientRect();
-      const svgX = ((ev.clientX - rect.left) / rect.width) * W;
-      let idx = Math.round(((svgX - padL) / plotW) * VOLUME_BUCKETS - 0.5);
-      idx = Math.max(0, Math.min(VOLUME_BUCKETS - 1, idx));
-      const [px, py] = points[idx];
-
-      crosshair.style.display = "block";
-      crosshair.setAttribute("x1", px); crosshair.setAttribute("x2", px);
-
-      const bucketStart = new Date(windowStart + idx * bucketMs);
-      const bucketEnd = new Date(windowStart + (idx + 1) * bucketMs);
-      tooltip.innerHTML = `<div class="tt-value">${buckets[idx]} case${buckets[idx] === 1 ? "" : "s"}</div>
-        <div class="tt-label">${bucketStart.toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"})}–${bucketEnd.toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"})}</div>`;
-      tooltip.classList.add("visible");
-      const hostRect = volumeHost.getBoundingClientRect();
-      tooltip.style.left = Math.min(hostRect.width - 120, Math.max(0, (px / W) * hostRect.width + 8)) + "px";
-      tooltip.style.top = Math.max(0, (py / H) * hostRect.height - 36) + "px";
-    });
-    capture.addEventListener("pointerleave", () => {
-      crosshair.style.display = "none";
-      tooltip.classList.remove("visible");
-    });
+  // ---------- rendering: case-file panel ----------
+  function selectCase(caseId) {
+    selectedId = caseId;
+    el('main').classList.add('has-selection');
+    renderQueue();
+    renderPanel();
+  }
+  function closePanel() {
+    selectedId = null;
+    el('main').classList.remove('has-selection');
+    renderQueue();
   }
 
-  // ---------- chart: AI risk score distribution (sequential histogram) ----------
+  function renderPanel() {
+    const c = cases.get(selectedId);
+    if (!c) { closePanel(); return; }
 
-  function renderRiskChart() {
-    const bins = new Array(10).fill(0);
-    let reviewedCount = 0;
-    for (const c of cases.values()) {
-      if (c.status !== "REVIEWED" || c.aiRiskScore === null || c.aiRiskScore === undefined) continue;
-      reviewedCount++;
-      const idx = Math.max(0, Math.min(9, Math.floor(c.aiRiskScore * 10)));
-      bins[idx]++;
-    }
+    const score = effectiveScore(c);
+    const locked = isLocked(c);
+    const live = LIVE_STATUSES.has(c.status);
+    const verdict = c.status === 'CONFIRMED_FRAUD';
+    const ink = live ? riskInk(score) : verdict ? RED_INK : SLATE_INK;
+    const ps = PAPER_STATUS[c.status] || PAPER_STATUS.OPEN;
+    const entry = reveal.get(c.caseId) || { words: [], shown: 0 };
+    const streaming = c.status === 'REVIEWED' && entry.shown < entry.words.length;
+    const isFailure = c.status === 'INVESTIGATION_FAILED';
+    const resolved = RESOLVED_STATUSES.has(c.status);
+    const actionsLocked = live || streaming;
 
-    if (reviewedCount === 0) {
-      riskHost.innerHTML = `<div class="chart-empty">No reviewed cases yet.</div>`;
-      return;
-    }
+    el('panelId').textContent = shortId(c.caseId);
 
-    const W = 560, H = 160, padL = 24, padB = 20, padT = 8, padR = 4;
-    const plotW = W - padL - padR, plotH = H - padT - padB;
-    const maxVal = Math.max(1, ...bins);
-    const barSlot = plotW / 10;
-    const barW = Math.min(24, barSlot - 4);
+    const reportState = isFailure ? '⚠ INVESTIGATION FAILED' : streaming ? '● GENERATING' : live ? '○ PENDING' : '■ REPORT LOCKED';
+    const reportStateColor = isFailure ? RED_INK : streaming ? AMBER_INK : '#8B8471';
+    const reportText = isFailure ? (c.aiReport || 'Unknown error.') : entry.words.slice(0, entry.shown).join(' ');
+    const signals = deriveSignals(c);
 
-    const barsHtml = bins.map((v, i) => {
-      const h = v === 0 ? 0 : Math.max(2, (plotH * v) / maxVal);
-      const x = padL + i * barSlot + (barSlot - barW) / 2;
-      const y = padT + plotH - h;
-      return `<rect class="hist-bar" tabindex="0" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}"
-                rx="4" ry="4" fill="${SEQ_RAMP[i]}" data-bin="${i}" data-count="${v}"></rect>`;
-    }).join("");
+    el('panelBody').innerHTML = `
+      <div class="panel-summary">
+        <div class="big-ring">
+          ${ringSvg(score, locked, ink, 76, 33, false)}
+          <div class="big-ring-inner">
+            <span class="score mono num" style="color:${ink}">${score}</span>
+            <span class="label">RISK</span>
+          </div>
+        </div>
+        <div class="panel-summary-text">
+          <span class="amount mono num">${money(c.amount)}</span>
+          <span class="reason">${escapeHtml(c.flagReason)}</span>
+          <span class="status-pill mono" style="align-self:flex-start;color:${ps.fg};background:${ps.bg};border-color:${ps.border}">${c.status}</span>
+        </div>
+      </div>
 
-    riskHost.innerHTML = `
-      <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Distribution of AI risk scores across reviewed cases">
-        <line class="baseline" x1="${padL}" x2="${W - padR}" y1="${padT + plotH}" y2="${padT + plotH}"></line>
-        ${barsHtml}
-        <text class="axis-label" x="${padL}" y="${H - 2}">0.0</text>
-        <text class="axis-label" x="${W - padR}" y="${H - 2}" text-anchor="end">1.0</text>
-      </svg>
-      <div class="chart-tooltip" id="riskTooltip"></div>`;
+      <div class="panel-section">
+        <span class="label">TRANSACTION RECORD</span>
+        <div class="detail-grid">
+          ${[
+            ['ACCOUNT', c.accountId],
+            ['AMOUNT', c.amount != null ? money(c.amount) + ' ' + (c.currency || '') : '—'],
+            ['TIMESTAMP', formatTime(c.transactionTimestamp || c.createdAt)],
+            ['MERCHANT', c.merchant ?? '—'],
+            ['CATEGORY', c.merchantCategory ?? '—'],
+            ['COUNTRY', c.country ?? '—'],
+            ['COMBINED SCORE', c.ruleScore != null ? c.ruleScore.toFixed(2) : '—'],
+          ].map(([k, v]) => `
+            <div class="detail-row">
+              <span class="k">${k}</span>
+              <span class="v mono">${escapeHtml(String(v))}</span>
+            </div>`).join('')}
+        </div>
+      </div>
 
-    const tooltip = riskHost.querySelector("#riskTooltip");
-    const svg = riskHost.querySelector("svg");
+      <div class="report-section">
+        <div class="report-head">
+          <span class="label">AI INVESTIGATION REPORT</span>
+          <span class="report-state mono" style="color:${reportStateColor}">${reportState}</span>
+        </div>
+        <div class="report-box" style="border-left-color:${ink}">
+          <p>${escapeHtml(reportText)}${streaming ? `<span class="cursor" style="background:${ink}"></span>` : ''}</p>
+        </div>
+        <div class="signals">
+          ${signals.map((s) => `<span class="signal-chip mono">${escapeHtml(s)}</span>`).join('')}
+        </div>
+      </div>`;
 
-    riskHost.querySelectorAll(".hist-bar").forEach((bar) => {
-      const show = () => {
-        const i = Number(bar.dataset.bin), count = Number(bar.dataset.count);
-        tooltip.innerHTML = `<div class="tt-value">${count} case${count === 1 ? "" : "s"}</div>
-          <div class="tt-label">risk ${(i / 10).toFixed(1)}–${((i + 1) / 10).toFixed(1)}</div>`;
-        tooltip.classList.add("visible");
-        const svgRect = svg.getBoundingClientRect();
-        const hostRect = riskHost.getBoundingClientRect();
-        const bx = Number(bar.getAttribute("x")) + Number(bar.getAttribute("width")) / 2;
-        tooltip.style.left = Math.min(hostRect.width - 100, Math.max(0, (bx / W) * hostRect.width - 30)) + "px";
-        tooltip.style.top = Math.max(0, (svgRect.height * (Number(bar.getAttribute("y")) / H)) - 34) + "px";
-      };
-      const hide = () => tooltip.classList.remove("visible");
-      bar.addEventListener("pointerenter", show);
-      bar.addEventListener("pointerleave", hide);
-      bar.addEventListener("focus", show);
-      bar.addEventListener("blur", hide);
-    });
-  }
-
-  // ---------- render orchestration ----------
-
-  function renderAll() {
-    renderStats();
-    renderTable();
-    renderVolumeChart();
-    renderRiskChart();
+    el('btnConfirm').disabled = actionsLocked || resolved || pendingDecision === c.caseId;
+    el('btnDismiss').disabled = actionsLocked || resolved || pendingDecision === c.caseId;
+    el('btnConfirm').style.opacity = (actionsLocked && !resolved) ? '0.4' : '1';
+    el('btnDismiss').style.opacity = (actionsLocked && !resolved) ? '0.4' : '1';
   }
 
   // ---------- decisions ----------
-
-  async function submitDecision(caseId, status) {
-    pendingDecision = caseId;
+  async function submitDecision(status, stampLabel, stampColor) {
+    const id = selectedId;
+    if (!id) return;
+    pendingDecision = id;
+    renderPanel();
     try {
-      const res = await fetch(`/api/cases/${encodeURIComponent(caseId)}/decision?status=${status}`, { method: "POST" });
+      const res = await fetch(`/api/cases/${encodeURIComponent(id)}/decision?status=${status}`, { method: 'POST' });
       if (!res.ok) throw new Error(`Decision failed: HTTP ${res.status}`);
+      showStamp(stampLabel, stampColor);
     } catch (err) {
       showError(err.message);
     } finally {
       pendingDecision = null;
-      renderTable();
+      renderQueue(); renderPanel();
+    }
+  }
+  function showStamp(text, color) {
+    el('stampText').textContent = text;
+    el('stampText').style.color = color;
+    el('stampText').style.borderColor = color;
+    el('stampOverlay').classList.add('visible');
+    clearTimeout(stampTimer);
+    stampTimer = setTimeout(() => el('stampOverlay').classList.remove('visible'), 1500);
+  }
+
+  function showError(msg) { el('errorBanner').textContent = msg; el('errorBanner').classList.add('visible'); }
+  function clearError() { el('errorBanner').classList.remove('visible'); }
+
+  // ---------- simulate inbound (real transaction, real pipeline) ----------
+  const SIM_ACCOUNTS = ['acct-1001', 'acct-1002', 'acct-1003', 'acct-1004', 'acct-1005'];
+  const SIM_MERCHANTS = [['Amazon','retail'],['Walmart','retail'],['Shell','fuel'],['Steam','gaming'],['Uber','travel'],['Delta Airlines','travel'],['Best Buy','electronics']];
+  const SIM_COUNTRIES = ['NG', 'RU', 'GB'];
+
+  async function simulateInbound() {
+    const btn = el('simulateBtn');
+    btn.disabled = true;
+    try {
+      const [merchant, category] = SIM_MERCHANTS[Math.floor(Math.random() * SIM_MERCHANTS.length)];
+      const body = {
+        transactionId: crypto.randomUUID(),
+        accountId: SIM_ACCOUNTS[Math.floor(Math.random() * SIM_ACCOUNTS.length)],
+        amount: Number((Math.random() * 20000 + 8000).toFixed(2)), // comfortably above the high-value threshold
+        currency: 'USD',
+        merchant, merchantCategory: category,
+        country: SIM_COUNTRIES[Math.floor(Math.random() * SIM_COUNTRIES.length)],
+        timestamp: new Date().toISOString(),
+      };
+      const res = await fetch('/api/transactions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!res.ok) throw new Error(`Submit failed: HTTP ${res.status}`);
+    } catch (err) {
+      showError(err.message);
+    } finally {
+      setTimeout(() => { btn.disabled = false; }, 1200);
     }
   }
 
-  function showError(message) { errorBannerEl.textContent = message; errorBannerEl.classList.add("visible"); }
-  function clearError() { errorBannerEl.classList.remove("visible"); }
+  // ---------- ticker (real recent transactions) ----------
+  function tickerItemHtml(t) {
+    const flagged = t.flagged;
+    const score = flagged ? Math.round((t.anomalyScore || 0) * 100) : 0;
+    const color = flagged ? riskColor(score) : '#4A5878';
+    return `
+      <div class="ticker-item">
+        <span class="t">${formatTime(t.timestamp).split(', ').pop()}</span>
+        <span class="id">${shortId(t.transactionId)}</span>
+        <span class="mono num" style="color:${color}">${money(t.amount)}</span>
+        <span class="ch">${escapeHtml(t.merchant || '')}</span>
+        <span class="flag mono" style="color:${color}">${flagged ? 'FLAG ' + score : ''}</span>
+      </div>`;
+  }
 
-  // ---------- initial snapshot + periodic safety-net resync ----------
+  async function refreshTicker() {
+    try {
+      const res = await fetch('/api/transactions');
+      if (!res.ok) return;
+      const list = await res.json();
+      const html = list.map(tickerItemHtml).join('');
+      el('tickerTrack').innerHTML = html + html; // doubled for the seamless scroll loop
+    } catch { /* ticker is decorative — fail silently */ }
+  }
 
+  // ---------- SSE + snapshot ----------
   async function fetchSnapshot() {
-    const res = await fetch("/api/cases/all");
+    const res = await fetch('/api/cases/all');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const list = await res.json();
-    for (const c of list) upsertCase(c, { markChanged: false });
+    for (const c of list) upsertCase(c, { fromSnapshot: true });
+    snapshotLoaded = true;
     clearError();
-    renderAll();
+    scheduleRender();
   }
-
-  // ---------- live updates over Server-Sent Events ----------
 
   function connectStream() {
-    const source = new EventSource("/api/cases/stream");
-
-    source.addEventListener("open", () => {
-      liveDotEl.classList.remove("reconnecting");
-      liveLabelEl.textContent = "live";
+    const source = new EventSource('/api/cases/stream');
+    source.addEventListener('open', () => {
+      el('liveDot').classList.remove('down');
+      el('liveLabel').textContent = 'STREAM LIVE';
     });
-
-    source.addEventListener("case-update", (ev) => {
+    source.addEventListener('case-update', (ev) => {
       const c = JSON.parse(ev.data);
       upsertCase(c);
-      renderAll();
+      scheduleRender();
     });
-
-    source.addEventListener("error", () => {
-      liveDotEl.classList.add("reconnecting");
-      liveLabelEl.textContent = "reconnecting…";
-      // EventSource retries on its own; nothing else to do here.
+    source.addEventListener('error', () => {
+      el('liveDot').classList.add('down');
+      el('liveLabel').textContent = 'RECONNECTING';
     });
   }
 
-  fetchSnapshot().catch((err) => showError(`Couldn't reach the API — is the app running? (${err.message})`));
+  // ---------- wiring ----------
+  el('simulateBtn').addEventListener('click', simulateInbound);
+  el('panelClose').addEventListener('click', closePanel);
+  el('btnConfirm').addEventListener('click', () => submitDecision('CONFIRMED_FRAUD', 'CONFIRMED FRAUD', RED_INK));
+  el('btnDismiss').addEventListener('click', () => submitDecision('DISMISSED', 'DISMISSED', TEAL_INK));
+  window.addEventListener('resize', () => renderCounters());
+
+  fetchSnapshot().catch((err) => showError(`Couldn't reach the API - is the app running? (${err.message})`));
   connectStream();
+  refreshTicker();
+  setInterval(refreshTicker, TICKER_POLL_MS);
   setInterval(() => fetchSnapshot().catch(() => {}), RESYNC_MS);
 </script>
 </body>

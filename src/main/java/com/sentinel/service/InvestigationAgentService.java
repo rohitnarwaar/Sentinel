@@ -5,6 +5,7 @@ import com.sentinel.domain.CaseStatus;
 import com.sentinel.domain.FraudCase;
 import com.sentinel.domain.Transaction;
 import com.sentinel.dto.FraudCaseOpenedEvent;
+import com.sentinel.dto.FraudCaseSummary;
 import com.sentinel.repository.CaseNoteRepository;
 import com.sentinel.repository.FraudCaseRepository;
 import com.sentinel.repository.SimilarCaseNote;
@@ -62,7 +63,7 @@ public class InvestigationAgentService {
 
         fraudCase.setStatus(CaseStatus.INVESTIGATING);
         fraudCaseRepository.save(fraudCase);
-        caseEventBroadcaster.broadcast(fraudCase);
+        caseEventBroadcaster.broadcast(FraudCaseSummary.of(fraudCase, txn));
 
         Timer.Sample sample = Timer.start(meterRegistry);
         try {
@@ -80,7 +81,7 @@ public class InvestigationAgentService {
         } finally {
             sample.stop(meterRegistry.timer("sentinel.ai.agent.latency"));
             fraudCaseRepository.save(fraudCase);
-            caseEventBroadcaster.broadcast(fraudCase);
+            caseEventBroadcaster.broadcast(FraudCaseSummary.of(fraudCase, txn));
         }
     }
 

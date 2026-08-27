@@ -4,6 +4,7 @@ import com.sentinel.domain.Transaction;
 import com.sentinel.dto.TransactionEvent;
 import com.sentinel.repository.TransactionRepository;
 import com.sentinel.service.TransactionProducerService;
+import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
@@ -32,6 +33,14 @@ public class TransactionController {
     @GetMapping("/{accountId}")
     public List<Transaction> byAccount(@PathVariable String accountId) {
         return transactionRepository.findTop20ByAccountIdOrderByTimestampDesc(accountId);
+    }
+
+    /** Single transaction by ID — FraudCase only stores transactionId, so the dashboard's
+     *  case-file panel fetches the actual amount/merchant/country lazily via this. */
+    @GetMapping("/txn/{transactionId}")
+    public Transaction byId(@PathVariable String transactionId) {
+        return transactionRepository.findById(transactionId)
+                .orElseThrow(() -> new EntityNotFoundException("Transaction not found: " + transactionId));
     }
 
     @GetMapping

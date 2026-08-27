@@ -2,7 +2,10 @@ package com.sentinel.controller;
 
 import com.sentinel.domain.CaseStatus;
 import com.sentinel.domain.FraudCase;
+import com.sentinel.domain.Transaction;
+import com.sentinel.dto.FraudCaseSummary;
 import com.sentinel.repository.FraudCaseRepository;
+import com.sentinel.repository.TransactionRepository;
 import com.sentinel.service.CaseEventBroadcaster;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -13,6 +16,9 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/cases")
@@ -20,6 +26,7 @@ import java.util.List;
 public class CaseController {
 
     private final FraudCaseRepository fraudCaseRepository;
+    private final TransactionRepository transactionRepository;
     private final CaseEventBroadcaster caseEventBroadcaster;
 
     @GetMapping
@@ -27,10 +34,22 @@ public class CaseController {
         return fraudCaseRepository.findByStatusOrderByCreatedAtDesc(CaseStatus.OPEN);
     }
 
-    /** All cases regardless of status, most recently active first — the dashboard's initial snapshot. */
+    /**
+     * All cases regardless of status, most recently active first — the
+     * dashboard's initial snapshot. Batches the linked transactions in one
+     * findAllById call rather than fetching each case's transaction
+     * individually, which at 100 cases would be a fetch storm.
+     */
     @GetMapping("/all")
-    public List<FraudCase> all() {
-        return fraudCaseRepository.findMostRecentlyActive(PageRequest.of(0, 100));
+    public List<FraudCaseSummary> all() {
+        List<FraudCase> page = fraudCaseRepository.findMostRecentlyActive(PageRequest.of(0, 100));
+        Map<String, Transaction> txnById = transactionRepository
+                .findAllById(page.stream().map(FraudCase::getTransactionId).distinct().toList())
+                .stream()
+                .collect(Collectors.toMap(Transaction::getTransactionId, Function.identity()));
+        return page.stream()
+                .map(c -> FraudCaseSummary.of(c, txnById.get(c.getTransactionId())))
+                .toList();
     }
 
     @GetMapping("/account/{accountId}")
@@ -51,7 +70,8 @@ public class CaseController {
         fraudCase.setStatus(status);
         fraudCase.setReviewedAt(Instant.now());
         FraudCase saved = fraudCaseRepository.save(fraudCase);
-        caseEventBroadcaster.broadcast(saved);
+        Transaction txn = transactionRepository.findById(saved.getTransactionId()).orElse(null);
+        caseEventBroadcaster.broadcast(FraudCaseSummary.of(saved, txn));
         return saved;
     }
 }
