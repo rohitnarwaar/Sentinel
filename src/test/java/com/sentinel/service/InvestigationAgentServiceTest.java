@@ -59,7 +59,8 @@ class InvestigationAgentServiceTest {
                 new InvestigationPromptBuilder(),
                 llmClient,
                 new ObjectMapper(),
-                new SimpleMeterRegistry());
+                new SimpleMeterRegistry(),
+                new CaseEventBroadcaster());
         ReflectionTestUtils.setField(investigationAgentService, "similarCasesK", 3);
         ReflectionTestUtils.setField(investigationAgentService, "recentHistoryLimit", 5);
     }
