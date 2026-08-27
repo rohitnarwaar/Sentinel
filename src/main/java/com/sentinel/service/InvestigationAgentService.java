@@ -41,6 +41,7 @@ public class InvestigationAgentService {
     private final LlmClient llmClient;
     private final ObjectMapper objectMapper;
     private final MeterRegistry meterRegistry;
+    private final CaseEventBroadcaster caseEventBroadcaster;
 
     @Value("${sentinel.investigation.similar-cases-k}")
     private int similarCasesK;
@@ -61,6 +62,7 @@ public class InvestigationAgentService {
 
         fraudCase.setStatus(CaseStatus.INVESTIGATING);
         fraudCaseRepository.save(fraudCase);
+        caseEventBroadcaster.broadcast(fraudCase);
 
         Timer.Sample sample = Timer.start(meterRegistry);
         try {
@@ -78,6 +80,7 @@ public class InvestigationAgentService {
         } finally {
             sample.stop(meterRegistry.timer("sentinel.ai.agent.latency"));
             fraudCaseRepository.save(fraudCase);
+            caseEventBroadcaster.broadcast(fraudCase);
         }
     }
 
