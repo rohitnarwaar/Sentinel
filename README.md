@@ -1,4 +1,4 @@
-# Sentinel — real-time AI fraud investigation platform
+# Sentinel - real-time AI fraud investigation platform
 
 Sentinel ingests transactions in real time, flags anomalies with a deterministic
 rules engine and a statistical anomaly scorer, hands anything flagged to an AI
