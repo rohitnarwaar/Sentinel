@@ -38,6 +38,7 @@ public class TransactionConsumerService {
     private final AnomalyScoringService anomalyScoringService;
     private final KafkaTemplate<String, FraudCaseOpenedEvent> caseEventKafkaTemplate;
     private final MeterRegistry meterRegistry;
+    private final CaseEventBroadcaster caseEventBroadcaster;
 
     @Value("${sentinel.anomaly.flag-threshold}")
     private double flagThreshold;
@@ -90,6 +91,7 @@ public class TransactionConsumerService {
                 .build();
         fraudCaseRepository.save(fraudCase);
         meterRegistry.counter("sentinel.cases.opened").increment();
+        caseEventBroadcaster.broadcast(fraudCase);
         log.info("Opened fraud case {} for transaction {} — {}",
                 fraudCase.getCaseId(), txn.getTransactionId(), reason);
 
