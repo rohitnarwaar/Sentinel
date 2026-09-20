@@ -24,7 +24,7 @@ would look if most of it ran itself.
 
 ## Screenshots
 
-Live case queue - real-time trend/risk charts, a scrolling transaction feed, and
+Live case queue : real-time trend/risk charts, a scrolling transaction feed, and
 cases updating over Server-Sent Events as they're flagged and investigated:
 
 ![Sentinel dashboard - case queue](docs/screenshots/dashboard-queue.png)
