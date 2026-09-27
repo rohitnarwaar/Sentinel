@@ -216,4 +216,4 @@ oversight.
 
 Java 21 · Spring Boot 3.3 · Spring Kafka · Spring Data JPA · PostgreSQL +
 pgvector · Anthropic Claude API · Micrometer/Prometheus/Grafana · Lombok ·
-Docker Compose
+Docker
